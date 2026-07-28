@@ -144,8 +144,20 @@ final class StreamResolver {
         String cacheKey = "rutube:" + id + (audioOnly ? ":audio" : "");
         PlaybackInfo cached = CACHE.get(cacheKey);
         if (cached != null && System.currentTimeMillis() - cached.loadedAt < CACHE_MS) return cached;
-        JSONObject options = new JSONObject(get("https://rutube.ru/api/play/options/" + id + "/?format=json",
+        JSONObject options = new JSONObject(get("https://rutube.ru/api/play/options/" + id
+                        + "/?format=json&no_404=true",
                 "https://rutube.ru/video/" + id + "/"));
+        JSONObject detail = options.optJSONObject("detail");
+        if (detail != null) {
+            String reason = null;
+            JSONArray languages = detail.optJSONArray("languages");
+            JSONObject language = languages == null ? null : languages.optJSONObject(0);
+            if (language != null) reason = language.optString("title", null);
+            if (reason == null || reason.isEmpty()) reason = detail.optString("type", null);
+            throw new Exception(reason == null || reason.isEmpty()
+                    ? "Видео RUTUBE недоступно"
+                    : "Видео RUTUBE недоступно: " + reason);
+        }
         JSONObject balancer = options.optJSONObject("video_balancer");
         if (balancer == null) throw new Exception("RUTUBE не отдал поток");
         String fallback = null;
@@ -192,6 +204,33 @@ final class StreamResolver {
         PlaybackInfo cached = CACHE.get(cacheKey);
         if (cached != null && System.currentTimeMillis() - cached.loadedAt < CACHE_MS) return cached;
 
+        Exception apiError;
+        try {
+            PlaybackInfo result = inspectVkApi(id, audioOnly);
+            CACHE.put(cacheKey, result);
+            return result;
+        } catch (Exception error) {
+            apiError = error;
+        }
+
+        try {
+            PlaybackInfo result = inspectVkLegacy(id, audioOnly);
+            CACHE.put(cacheKey, result);
+            return result;
+        } catch (Exception legacyError) {
+            legacyError.addSuppressed(apiError);
+            throw legacyError;
+        }
+    }
+
+    private PlaybackInfo inspectVkApi(String id, boolean audioOnly) throws Exception {
+        JSONObject video = VkWebClient.getVideoById(id);
+        JSONObject files = video.optJSONObject("files");
+        if (files == null) throw new Exception("VK Video не отдал публичный поток");
+        return inspectVkFiles(files, video.optInt("width"), video.optInt("height"), audioOnly);
+    }
+
+    private PlaybackInfo inspectVkLegacy(String id, boolean audioOnly) throws Exception {
         String body = "act=show&video=" + URLEncoder.encode(id, "UTF-8") + "&al=1";
         JSONObject root = new JSONObject(postVk(body));
         JSONArray envelope = root.optJSONArray("payload");
@@ -205,17 +244,24 @@ final class StreamResolver {
         JSONArray params = player == null ? null : player.optJSONArray("params");
         JSONObject data = params == null ? null : params.optJSONObject(0);
         if (data == null) throw new Exception("VK Video не отдал публичный поток");
+        return inspectVkFiles(data, 0, 0, audioOnly);
+    }
 
-        String hls = httpUrl(data.optString("hls"));
-        if (hls == null) hls = httpUrl(data.optString("hls_fmp4"));
-        String dash = httpUrl(data.optString("dash"));
+    private PlaybackInfo inspectVkFiles(JSONObject files, int reportedWidth, int reportedHeight,
+                                        boolean audioOnly) throws Exception {
+        String hls = httpUrl(files.optString("hls"));
+        if (hls == null) hls = httpUrl(files.optString("hls_fmp4"));
+        if (hls == null) hls = httpUrl(files.optString("hls_streams"));
+        String dash = httpUrl(files.optString("dash_sep"));
+        if (dash == null) dash = httpUrl(files.optString("dash"));
+        if (dash == null) dash = httpUrl(files.optString("dash_streams"));
         String fallback = null;
         int bestHeight = 0;
         String lowestFallback = null;
         int lowestHeight = Integer.MAX_VALUE;
-        for (Iterator<String> it = data.keys(); it.hasNext();) {
+        for (Iterator<String> it = files.keys(); it.hasNext();) {
             String key = it.next();
-            String value = httpUrl(data.optString(key));
+            String value = httpUrl(files.optString(key));
             if (value == null) continue;
             if (hls == null && key.startsWith("hls") && !key.contains("live_playback")) hls = value;
             if (dash == null && key.startsWith("dash") && !key.contains("live_playback")
@@ -245,10 +291,11 @@ final class StreamResolver {
             mime = null;
         }
         if (stream == null) throw new Exception("Нет совместимого потока VK Video");
-        int bestWidth = bestHeight <= 0 ? 0 : Math.round(bestHeight * 16f / 9f);
-        PlaybackInfo result = new PlaybackInfo(stream, mime, bestWidth, bestHeight);
-        CACHE.put(cacheKey, result);
-        return result;
+        if (bestHeight <= 0) bestHeight = Math.max(0, reportedHeight);
+        int bestWidth = bestHeight <= 0 ? Math.max(0, reportedWidth)
+                : reportedWidth > 0 && reportedHeight == bestHeight
+                ? reportedWidth : Math.round(bestHeight * 16f / 9f);
+        return new PlaybackInfo(stream, mime, bestWidth, bestHeight);
     }
 
     private static boolean isHls(String value) {

@@ -28,6 +28,35 @@ final class VkWebClient {
     private static String anonymousToken;
     private static long tokenExpiresAt;
 
+    static JSONObject getVideoById(String videoId) throws Exception {
+        return getVideoById(videoId, true);
+    }
+
+    private static JSONObject getVideoById(String videoId, boolean retryToken) throws Exception {
+        String address = "https://api.vk.com/method/video.getByIds"
+                + "?v=" + API_VERSION
+                + "&client_id=" + CLIENT_ID;
+        String body = "access_token=" + Uri.encode(getAnonymousToken())
+                + "&videos=" + Uri.encode(videoId)
+                + "&video_fields=" + Uri.encode("added,episodes,files,image,is_favorite,"
+                + "subtitles,timeline_thumbs,trailer,volume_multiplier");
+        JSONObject root = postJson(address, body);
+        JSONObject error = root.optJSONObject("error");
+        if (error != null) {
+            if (retryToken && error.optInt("error_code") == 5) {
+                clearAnonymousToken();
+                return getVideoById(videoId, false);
+            }
+            throw new Exception("VK Video: "
+                    + error.optString("error_msg", "ошибка получения потока"));
+        }
+        JSONObject response = root.optJSONObject("response");
+        JSONArray items = response == null ? null : response.optJSONArray("items");
+        JSONObject video = items == null ? null : items.optJSONObject(0);
+        if (video == null) throw new Exception("VK Video не отдал данные ролика");
+        return video;
+    }
+
     List<VideoItem> search(String query, int minWidth, int thumbnailWidth) throws Exception {
         String address = "https://api.vkvideo.ru/method/catalog.getVideoSearchWeb2"
                 + "?v=" + API_VERSION
@@ -85,6 +114,11 @@ final class VkWebClient {
         tokenExpiresAt = data == null ? 0 : data.optLong("expired_at");
         if (anonymousToken == null || anonymousToken.isEmpty()) throw new Exception("VK Video не выдал анонимную сессию");
         return anonymousToken;
+    }
+
+    private static synchronized void clearAnonymousToken() {
+        anonymousToken = null;
+        tokenExpiresAt = 0;
     }
 
     private static void collectOrderedIds(JSONArray sections, Set<String> result) {
