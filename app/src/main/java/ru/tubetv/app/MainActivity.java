@@ -51,7 +51,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class MainActivity extends Activity {
     private static final int REQUEST_INSTALL_SOURCE = 4307;
     private final SearchClient searchClient = new SearchClient();
-    private final ExecutorService network = Executors.newFixedThreadPool(3);
+    private final ExecutorService network = Executors.newFixedThreadPool(4);
     private final AtomicInteger generation = new AtomicInteger();
     private final List<VideoItem> allItems = new ArrayList<>();
     private final List<VideoItem> items = new ArrayList<>();
@@ -78,12 +78,15 @@ public final class MainActivity extends Activity {
     private boolean rutubeDone;
     private boolean vkDone;
     private boolean dzenDone;
+    private boolean okDone;
     private int rutubeCount;
     private int vkCount;
     private int dzenCount;
+    private int okCount;
     private String rutubeError;
     private String vkError;
     private String dzenError;
+    private String okError;
     private String currentSearchQuery = "";
     private int qualityJobs;
     private UpdateManager.Release pendingUpdate;
@@ -136,7 +139,8 @@ public final class MainActivity extends Activity {
         query.setSingleLine(true);
         query.setTextColor(Color.WHITE);
         query.setHintTextColor(Color.rgb(160, 166, 178));
-        query.setHint(compact ? "Найти видео" : "Введите запрос для поиска в RUTUBE, VK Video и Дзене");
+        query.setHint(compact ? "Найти видео"
+                : "Введите запрос для поиска в RUTUBE, VK Video, Дзене и OK");
         query.setTextSize(compact ? 16 : 20);
         query.setBackgroundResource(R.drawable.search_field_background);
         if (compact) {
@@ -276,19 +280,24 @@ public final class MainActivity extends Activity {
         rutubeDone = false;
         vkDone = false;
         dzenDone = false;
+        okDone = false;
         rutubeCount = 0;
         vkCount = 0;
         dzenCount = 0;
+        okCount = 0;
         rutubeError = null;
         vkError = null;
         dzenError = null;
+        okError = null;
         updateSearchStatus();
         activeSearches.add(network.submit(
                 () -> runSource(current, "RUTUBE", () -> searchClient.searchRutube(value, 0))));
         activeSearches.add(network.submit(
                 () -> runVkSource(current, value)));
         activeSearches.add(network.submit(
-                () -> runSource(current, "Дзен", () -> searchClient.searchDzen(value, 0))));
+                () -> runDzenSource(current, value)));
+        activeSearches.add(network.submit(
+                () -> runSource(current, "OK", () -> searchClient.searchOk(value, 0))));
     }
 
     private void selectFilter(int index, boolean rerunSearch) {
@@ -369,6 +378,34 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void runDzenSource(int current, String value) {
+        int[] delivered = {0};
+        try {
+            int count = searchClient.searchDzenPages(value, found -> {
+                if (Thread.currentThread().isInterrupted() || current != generation.get()) {
+                    return false;
+                }
+                delivered[0] += found.size();
+                runOnUiThread(() -> {
+                    if (current != generation.get()) return;
+                    allItems.addAll(found);
+                    refreshDisplayedItems(true);
+                    requestMissingQualities(current, found);
+                });
+                return true;
+            });
+            runOnUiThread(() -> {
+                if (current == generation.get()) finishSource("Дзен", count, null);
+            });
+        } catch (Exception e) {
+            runOnUiThread(() -> {
+                if (current == generation.get()) {
+                    finishSource("Дзен", delivered[0], safeMessage(e));
+                }
+            });
+        }
+    }
+
     private void finishSource(String source, int count, String error) {
         if ("RUTUBE".equals(source)) {
             rutubeDone = true;
@@ -378,10 +415,14 @@ public final class MainActivity extends Activity {
             vkDone = true;
             vkCount = count;
             vkError = error;
-        } else {
+        } else if ("Дзен".equals(source)) {
             dzenDone = true;
             dzenCount = count;
             dzenError = error;
+        } else if ("OK".equals(source)) {
+            okDone = true;
+            okCount = count;
+            okError = error;
         }
         updateSearchStatus();
     }
@@ -393,7 +434,7 @@ public final class MainActivity extends Activity {
             return;
         }
         status.setVisibility(View.VISIBLE);
-        boolean working = !rutubeDone || !vkDone || !dzenDone || qualityJobs > 0;
+        boolean working = !rutubeDone || !vkDone || !dzenDone || !okDone || qualityJobs > 0;
         status.setText("Найдено: " + items.size() + (working ? "…" : ""));
     }
 
@@ -415,13 +456,17 @@ public final class MainActivity extends Activity {
     private void requestMissingQualities(int current, List<VideoItem> candidates) {
         List<VideoItem> regular = new ArrayList<>();
         List<VideoItem> dzen = new ArrayList<>();
+        List<VideoItem> ok = new ArrayList<>();
         for (VideoItem item : candidates) {
             String key = item.stableKey();
             if (item.maxWidth != 0 || !qualityRequested.add(key)) continue;
-            ("ДЗЕН".equals(item.source) ? dzen : regular).add(item);
+            if ("ДЗЕН".equals(item.source)) dzen.add(item);
+            else if ("OK".equals(item.source)) ok.add(item);
+            else regular.add(item);
         }
         submitQualityJob(current, regular, 4);
         submitQualityJob(current, dzen, 2);
+        submitQualityJob(current, ok, 2);
     }
 
     private void submitQualityJob(int current, List<VideoItem> missing, int parallel) {

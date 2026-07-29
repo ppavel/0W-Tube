@@ -1,5 +1,7 @@
 package ru.tubetv.app;
 
+import android.net.Uri;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -13,11 +15,15 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 final class StreamResolver {
     private static final long CACHE_MS = 10 * 60 * 1000L;
+    private static final int MAX_DZEN_STREAMS = 36;
     private static final ConcurrentHashMap<String, PlaybackInfo> CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, DzenStreams> DZEN_STREAMS =
+            new ConcurrentHashMap<>();
 
     String resolve(String resolverUrl) throws Exception {
         return resolveForPlayback(resolverUrl, false).streamUrl;
@@ -32,6 +38,9 @@ final class StreamResolver {
                 || resolverUrl.contains("vk.com/video"))) {
             return inspectVk(resolverUrl, audioOnly);
         }
+        if (OkClient.isOkUrl(resolverUrl)) {
+            return inspectOk(resolverUrl, true, audioOnly);
+        }
         return inspectRutube(resolverUrl, audioOnly);
     }
 
@@ -42,97 +51,211 @@ final class StreamResolver {
         if (url != null && (url.contains("vkvideo.ru/") || url.contains("vk.com/video"))) {
             return inspectVk(url, false);
         }
+        if (OkClient.isOkUrl(url)) {
+            return inspectOk(url, false, false);
+        }
         return inspectRutube(url, false);
+    }
+
+    static void cacheDzen(String id, JSONObject video, int maxWidth, int maxHeight) {
+        if (id == null || id.isEmpty() || video == null) return;
+        trimDzenStreams();
+        DZEN_STREAMS.put(id, DzenStreams.from(video, maxWidth, maxHeight));
+    }
+
+    private static void trimDzenStreams() {
+        long now = System.currentTimeMillis();
+        String oldestKey = null;
+        long oldestTime = Long.MAX_VALUE;
+        for (Map.Entry<String, DzenStreams> entry : DZEN_STREAMS.entrySet()) {
+            DzenStreams value = entry.getValue();
+            if (now - value.loadedAt >= CACHE_MS) {
+                DZEN_STREAMS.remove(entry.getKey(), value);
+            } else if (value.loadedAt < oldestTime) {
+                oldestTime = value.loadedAt;
+                oldestKey = entry.getKey();
+            }
+        }
+        if (DZEN_STREAMS.size() >= MAX_DZEN_STREAMS && oldestKey != null) {
+            DZEN_STREAMS.remove(oldestKey);
+        }
     }
 
     private PlaybackInfo inspectDzen(String url, boolean forPlayback, boolean audioOnly) throws Exception {
         String id = findDzenId(url);
-        String cacheKey = "dzen:" + id;
+        String cacheKey = "dzen:" + id + (audioOnly ? ":audio" : "");
+        PlaybackInfo cached = CACHE.get(cacheKey);
+        if (cached != null && System.currentTimeMillis() - cached.loadedAt < CACHE_MS) {
+            return cached;
+        }
+
+        DzenStreams streams = DZEN_STREAMS.get(id);
+        if (streams == null || System.currentTimeMillis() - streams.loadedAt >= CACHE_MS) {
+            String pageUrl = "https://dzen.ru/video/watch/" + id;
+            String page = DzenClient.getPage(pageUrl);
+            int metadata = page.indexOf("\"videoMetaResponse\"");
+            int params = metadata < 0 ? -1 : page.lastIndexOf("var _params", metadata);
+            int objectStart = params < 0 ? -1 : page.indexOf('{', params);
+            if (objectStart < 0) throw new Exception("Дзен не отдал данные ролика");
+            JSONObject root = new JSONObject(jsonObjectAt(page, objectStart));
+            JSONObject ssr = root.optJSONObject("ssrData");
+            JSONObject meta = ssr == null ? null : ssr.optJSONObject("videoMetaResponse");
+            JSONObject video = meta == null ? null : meta.optJSONObject("video");
+            if (video == null) throw new Exception("Дзен не отдал публичный поток");
+            streams = DzenStreams.from(video, video.optInt("width"), video.optInt("height"));
+            DZEN_STREAMS.put(id, streams);
+        }
+
+        String stream;
+        String mime;
+        if (audioOnly && streams.dash != null
+                && hasDashAudio(streams.dash, null, DzenClient.USER_AGENT)) {
+            stream = streams.dash;
+            mime = "application/dash+xml";
+        } else if (streams.hls != null) {
+            String separateAudio = audioOnly
+                    ? findHlsAudioRendition(streams.hls, null, DzenClient.USER_AGENT) : null;
+            stream = separateAudio != null ? separateAudio : streams.hls;
+            mime = "application/x-mpegURL";
+        } else {
+            stream = audioOnly && streams.audioFallback != null
+                    ? streams.audioFallback : streams.fallback;
+            mime = null;
+        }
+        if (stream == null) throw new Exception("Нет совместимого потока Дзен");
+
+        int maxWidth = streams.maxWidth;
+        int maxHeight = streams.maxHeight;
+        if (!forPlayback && maxWidth == 0 && streams.hls != null) {
+            try {
+                int[] dimensions = findMaxDimensions(
+                        get(streams.hls, null, DzenClient.USER_AGENT));
+                maxWidth = dimensions[0];
+                maxHeight = dimensions[1];
+            } catch (Exception ignored) { }
+        }
+        if (maxWidth == 0 && streams.fallback != null
+                && streams.fallback.contains("type=5")) {
+            maxWidth = 1920;
+            maxHeight = 1080;
+        }
+        PlaybackInfo result = new PlaybackInfo(stream, mime, maxWidth, maxHeight);
+        CACHE.put(cacheKey, result);
+        return result;
+    }
+
+    private PlaybackInfo inspectOk(String url, boolean forPlayback, boolean audioOnly) throws Exception {
+        String id = OkClient.findVideoId(url);
+        String cacheKey = "ok:" + id;
         if (!forPlayback) {
             PlaybackInfo cached = CACHE.get(cacheKey);
             if (cached != null && System.currentTimeMillis() - cached.loadedAt < CACHE_MS) return cached;
         }
 
-        String pageUrl = "https://dzen.ru/video/watch/" + id;
-        String page = DzenClient.getPage(pageUrl);
-        int metadata = page.indexOf("\"videoMetaResponse\"");
-        int params = metadata < 0 ? -1 : page.lastIndexOf("var _params", metadata);
-        int objectStart = params < 0 ? -1 : page.indexOf('{', params);
-        if (objectStart < 0) throw new Exception("Дзен не отдал данные ролика");
-        JSONObject root = new JSONObject(jsonObjectAt(page, objectStart));
-        JSONObject ssr = root.optJSONObject("ssrData");
-        JSONObject meta = ssr == null ? null : ssr.optJSONObject("videoMetaResponse");
-        JSONObject video = meta == null ? null : meta.optJSONObject("video");
-        if (video == null) throw new Exception("Дзен не отдал публичный поток");
+        OkClient.PlayerData player = OkClient.loadPlayerData(url);
+        if (player.externalUrl != null) {
+            String external = player.externalUrl;
+            if (external.contains("vkvideo.ru/") || external.contains("vk.com/video")) {
+                return inspectVk(external, audioOnly);
+            }
+            if (external.contains("dzen.ru/video/") || external.contains("zen.yandex.ru/video/")) {
+                return inspectDzen(external, forPlayback, audioOnly);
+            }
+            if (external.contains("rutube.ru/")) return inspectRutube(external, audioOnly);
+            throw new Exception("Видео OK размещено на неподдерживаемом внешнем сервисе");
+        }
+        if (player.mobileUrl != null) {
+            PlaybackInfo result = new PlaybackInfo(player.mobileUrl, 0, 0);
+            if (!forPlayback) CACHE.put(cacheKey, result);
+            return result;
+        }
 
-        String hls = null;
-        String dash = null;
-        String fallback = null;
-        String audioFallback = null;
-        String direct = httpUrl(video.optString("id"));
-        if (isDash(direct)) dash = direct;
-        else if (isHls(direct)) hls = direct;
-        else if (direct != null) {
-            fallback = direct;
-            audioFallback = direct;
+        JSONObject metadata = player.metadata;
+        if (metadata == null) throw new Exception("OK не отдал метаданные ролика");
+        JSONObject movie = metadata.optJSONObject("movie");
+        if ("USER_YOUTUBE".equals(metadata.optString("provider"))) {
+            throw new Exception("Видео OK размещено на YouTube и пока не поддерживается");
         }
-        JSONArray streams = video.optJSONArray("streams");
-        if (streams != null) {
-            for (int i = 0; i < streams.length(); i++) {
-                String candidate = httpUrl(streams.optString(i));
+
+        String hls = firstHttp(metadata, "hlsManifestUrl", "ondemandHls",
+                "hlsMasterPlaylistUrl");
+        String dash = firstHttp(metadata, "ondemandDash", "metadataWebmUrl");
+        String metadataUrl = httpUrl(metadata.optString("metadataUrl"));
+        if (dash == null && isDash(metadataUrl)) dash = metadataUrl;
+
+        String bestDirect = null;
+        int bestRank = Integer.MIN_VALUE;
+        String lowestDirect = null;
+        int lowestRank = Integer.MAX_VALUE;
+        JSONArray videos = metadata.optJSONArray("videos");
+        if (videos != null) {
+            for (int i = 0; i < videos.length(); i++) {
+                JSONObject format = videos.optJSONObject(i);
+                String candidate = format == null ? null : httpUrl(format.optString("url"));
                 if (candidate == null) continue;
-                if (dash == null && isDash(candidate)) dash = candidate;
-                if (hls == null && isHls(candidate)) hls = candidate;
-                if (fallback == null && candidate.contains("ct=0")) fallback = candidate;
-                if (candidate.contains("ct=0")
-                        && (audioFallback == null || candidate.contains("type=4"))) {
-                    audioFallback = candidate;
+                int rank = okQualityRank(format.optString("name"), candidate);
+                if (bestDirect == null || rank > bestRank) {
+                    bestDirect = candidate;
+                    bestRank = rank;
+                }
+                if (lowestDirect == null || rank < lowestRank) {
+                    lowestDirect = candidate;
+                    lowestRank = rank;
                 }
             }
         }
-        JSONArray oneVideo = video.optJSONArray("oneVideoStreams");
-        if (oneVideo != null) {
-            for (int i = 0; i < oneVideo.length(); i++) {
-                JSONObject item = oneVideo.optJSONObject(i);
-                String candidate = item == null ? null : httpUrl(item.optString("url"));
-                if (candidate == null) continue;
-                if (dash == null && ("dash".equals(item.optString("type")) || isDash(candidate))) dash = candidate;
-                if (hls == null && ("hls".equals(item.optString("type")) || isHls(candidate))) hls = candidate;
-                if (fallback == null && "fullhd".equals(item.optString("type"))) fallback = candidate;
-                if (candidate.contains("ct=0")
-                        && (audioFallback == null || candidate.contains("type=4"))) {
-                    audioFallback = candidate;
+
+        int maxWidth = movie == null ? 0 : Math.max(0, movie.optInt("width"));
+        int maxHeight = movie == null ? 0 : Math.max(0, movie.optInt("height"));
+        if (!forPlayback) {
+            int[] manifestDimensions = new int[]{0, 0};
+            if (hls != null) {
+                try {
+                    manifestDimensions = findMaxDimensions(OkClient.getCdnText(hls));
+                } catch (Exception ignored) { }
+            }
+            if (dash != null) {
+                try {
+                    int[] dashDimensions = findMaxDimensions(OkClient.getCdnText(dash));
+                    if (dashDimensions[0] > manifestDimensions[0]) {
+                        manifestDimensions = dashDimensions;
+                    }
+                } catch (Exception ignored) { }
+            }
+            String embeddedDash = metadata.optString("metadataEmbedded");
+            if (!embeddedDash.isEmpty()) {
+                int[] embeddedDimensions = findMaxDimensions(embeddedDash);
+                if (embeddedDimensions[0] > manifestDimensions[0]) {
+                    manifestDimensions = embeddedDimensions;
                 }
             }
+            if (manifestDimensions[0] > 0) {
+                maxWidth = manifestDimensions[0];
+                maxHeight = manifestDimensions[1];
+            }
         }
+
         String stream;
         String mime;
-        if (audioOnly && dash != null && hasDashAudio(dash, null, DzenClient.USER_AGENT)) {
+        if (audioOnly && dash != null && hasOkDashAudio(dash)) {
             stream = dash;
             mime = "application/dash+xml";
         } else if (hls != null) {
-            String separateAudio = audioOnly
-                    ? findHlsAudioRendition(hls, null, DzenClient.USER_AGENT) : null;
-            stream = separateAudio != null ? separateAudio : hls;
+            stream = hls;
             mime = "application/x-mpegURL";
+        } else if (dash != null) {
+            stream = dash;
+            mime = "application/dash+xml";
         } else {
-            stream = audioOnly && audioFallback != null ? audioFallback : fallback;
+            stream = audioOnly && lowestDirect != null ? lowestDirect : bestDirect;
             mime = null;
         }
-        if (stream == null) throw new Exception("Нет совместимого потока Дзен");
-
-        int maxWidth = 0;
-        int maxHeight = 0;
-        if (!forPlayback && hls != null) {
-            try {
-                int[] dimensions = findMaxDimensions(get(hls, null, DzenClient.USER_AGENT));
-                maxWidth = dimensions[0];
-                maxHeight = dimensions[1];
-            } catch (Exception ignored) { }
-        }
-        if (maxWidth == 0 && fallback != null && fallback.contains("type=5")) {
-            maxWidth = 1920;
-            maxHeight = 1080;
+        if (stream == null) {
+            Object paymentInfo = metadata.opt("paymentInfo");
+            if (paymentInfo != null && paymentInfo != JSONObject.NULL) {
+                throw new Exception("Видео OK платное");
+            }
+            throw new Exception("Нет совместимого потока OK");
         }
         PlaybackInfo result = new PlaybackInfo(stream, mime, maxWidth, maxHeight);
         if (!forPlayback) CACHE.put(cacheKey, result);
@@ -141,12 +264,19 @@ final class StreamResolver {
 
     private PlaybackInfo inspectRutube(String url, boolean audioOnly) throws Exception {
         String id = findRutubeId(url);
-        String cacheKey = "rutube:" + id + (audioOnly ? ":audio" : "");
+        String privateKey = queryParameter(url, "p");
+        String cacheKey = "rutube:" + id + ':' + (privateKey == null ? "" : privateKey)
+                + (audioOnly ? ":audio" : "");
         PlaybackInfo cached = CACHE.get(cacheKey);
         if (cached != null && System.currentTimeMillis() - cached.loadedAt < CACHE_MS) return cached;
-        JSONObject options = new JSONObject(get("https://rutube.ru/api/play/options/" + id
-                        + "/?format=json&no_404=true",
-                "https://rutube.ru/video/" + id + "/"));
+        String optionsUrl = "https://rutube.ru/api/play/options/" + id
+                + "/?format=json&no_404=true";
+        if (privateKey != null && !privateKey.isEmpty()) {
+            optionsUrl += "&p=" + URLEncoder.encode(privateKey, "UTF-8");
+        }
+        String referer = url != null && url.startsWith("http")
+                ? url : "https://rutube.ru/video/" + id + "/";
+        JSONObject options = new JSONObject(get(optionsUrl, referer));
         JSONObject detail = options.optJSONObject("detail");
         if (detail != null) {
             String reason = null;
@@ -179,13 +309,12 @@ final class StreamResolver {
         }
         String stream;
         String mime;
-        if (audioOnly && dash != null && hasDashAudio(dash,
-                "https://rutube.ru/video/" + id + "/", null)) {
+        if (audioOnly && dash != null && hasDashAudio(dash, referer, null)) {
             stream = dash;
             mime = "application/dash+xml";
         } else if (hls != null) {
-            String separateAudio = audioOnly ? findHlsAudioRendition(hls,
-                    "https://rutube.ru/video/" + id + "/", null) : null;
+            String separateAudio = audioOnly
+                    ? findHlsAudioRendition(hls, referer, null) : null;
             stream = separateAudio != null ? separateAudio : hls;
             mime = "application/x-mpegURL";
         } else {
@@ -196,6 +325,15 @@ final class StreamResolver {
         PlaybackInfo result = new PlaybackInfo(stream, mime, maxWidth, maxHeight);
         CACHE.put(cacheKey, result);
         return result;
+    }
+
+    private static String queryParameter(String url, String name) {
+        if (url == null || url.isEmpty()) return null;
+        try {
+            return Uri.parse(url).getQueryParameter(name);
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     private PlaybackInfo inspectVk(String url, boolean audioOnly) throws Exception {
@@ -304,6 +442,42 @@ final class StreamResolver {
 
     private static boolean isDash(String value) {
         return value != null && (value.contains(".mpd") || value.contains("ct=6"));
+    }
+
+    private static String firstHttp(JSONObject object, String... keys) {
+        for (String key : keys) {
+            String value = httpUrl(object.optString(key));
+            if (value != null) return value;
+        }
+        return null;
+    }
+
+    private static boolean hasOkDashAudio(String dashUrl) {
+        try {
+            String manifest = OkClient.getCdnText(dashUrl);
+            return manifest.contains("contentType=\"audio\"")
+                    || manifest.contains("mimeType=\"audio/")
+                    || manifest.contains("<AudioChannelConfiguration");
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private static int okQualityRank(String name, String url) {
+        String normalized = name == null ? "" : name.toLowerCase(Locale.US);
+        if ("mobile".equals(normalized)) return 0;
+        if ("lowest".equals(normalized)) return 1;
+        if ("low".equals(normalized)) return 2;
+        if ("sd".equals(normalized)) return 3;
+        if ("hd".equals(normalized)) return 4;
+        if ("full".equals(normalized)) return 5;
+        if ("quad".equals(normalized)) return 6;
+        if ("ultra".equals(normalized)) return 7;
+        String[] types = {"4", "0", "1", "2", "3", "5", "6", "7"};
+        for (int i = 0; i < types.length; i++) {
+            if (url.contains("type=" + types[i]) || url.contains("type/" + types[i])) return i;
+        }
+        return -1;
     }
 
     private static String findHlsAudioRendition(String hlsUrl, String referer, String userAgent) {
@@ -431,6 +605,76 @@ final class StreamResolver {
             }
         }
         throw new Exception("Не найден ID RUTUBE");
+    }
+
+    private static final class DzenStreams {
+        final String hls;
+        final String dash;
+        final String fallback;
+        final String audioFallback;
+        final int maxWidth;
+        final int maxHeight;
+        final long loadedAt = System.currentTimeMillis();
+
+        private DzenStreams(String hls, String dash, String fallback,
+                            String audioFallback, int maxWidth, int maxHeight) {
+            this.hls = hls;
+            this.dash = dash;
+            this.fallback = fallback;
+            this.audioFallback = audioFallback;
+            this.maxWidth = maxWidth;
+            this.maxHeight = maxHeight;
+        }
+
+        static DzenStreams from(JSONObject video, int reportedWidth, int reportedHeight) {
+            String hls = null;
+            String dash = null;
+            String fallback = null;
+            String audioFallback = null;
+            String direct = httpUrl(video.optString("id"));
+            if (isDash(direct)) dash = direct;
+            else if (isHls(direct)) hls = direct;
+            else if (direct != null) {
+                fallback = direct;
+                audioFallback = direct;
+            }
+            JSONArray streams = video.optJSONArray("streams");
+            if (streams != null) {
+                for (int i = 0; i < streams.length(); i++) {
+                    String candidate = httpUrl(streams.optString(i));
+                    if (candidate == null) continue;
+                    if (dash == null && isDash(candidate)) dash = candidate;
+                    if (hls == null && isHls(candidate)) hls = candidate;
+                    if (fallback == null && candidate.contains("ct=0")) fallback = candidate;
+                    if (candidate.contains("ct=0")
+                            && (audioFallback == null || candidate.contains("type=4"))) {
+                        audioFallback = candidate;
+                    }
+                }
+            }
+            JSONArray oneVideo = video.optJSONArray("oneVideoStreams");
+            if (oneVideo != null) {
+                for (int i = 0; i < oneVideo.length(); i++) {
+                    JSONObject item = oneVideo.optJSONObject(i);
+                    String candidate = item == null ? null : httpUrl(item.optString("url"));
+                    if (candidate == null) continue;
+                    String type = item.optString("type");
+                    if (dash == null && ("dash".equals(type) || isDash(candidate))) {
+                        dash = candidate;
+                    }
+                    if (hls == null && ("hls".equals(type) || isHls(candidate))) {
+                        hls = candidate;
+                    }
+                    if (fallback == null && "fullhd".equals(type)) fallback = candidate;
+                    if (candidate.contains("ct=0")
+                            && (audioFallback == null || candidate.contains("type=4"))) {
+                        audioFallback = candidate;
+                    }
+                }
+            }
+            return new DzenStreams(hls, dash, fallback, audioFallback,
+                    reportedWidth, reportedHeight);
+        }
     }
 
     private static String get(String address, String referer) throws Exception {

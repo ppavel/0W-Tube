@@ -5,7 +5,7 @@ plugins {
 def releaseKeystorePath = System.getenv('RELEASE_KEYSTORE_PATH')
 
 android {
-    namespace 'ru.tubetv.app'
+    namespace = 'ru.tubetv.app'
     compileSdk 36
 
     defaultConfig {
@@ -18,8 +18,8 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 
     signingConfigs {
@@ -36,10 +36,10 @@ android {
     buildTypes {
         release {
             if (releaseKeystorePath) {
-                signingConfig signingConfigs.release
+                signingConfig = signingConfigs.release
             }
             minifyEnabled true
-            shrinkResources true
+            shrinkResources = true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -62,4 +62,7 @@ dependencies {
     implementation 'androidx.media3:media3-exoplayer:1.10.1'
     implementation 'androidx.media3:media3-exoplayer-hls:1.10.1'
     implementation 'androidx.media3:media3-exoplayer-dash:1.10.1'
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
 }

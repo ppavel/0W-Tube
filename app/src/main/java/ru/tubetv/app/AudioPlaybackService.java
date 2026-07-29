@@ -28,6 +28,9 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 
+import java.net.CookieHandler;
+import java.net.CookieManager;
+import java.net.CookiePolicy;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -85,10 +88,18 @@ public final class AudioPlaybackService extends Service {
         Map<String, String> headers = new HashMap<>();
         boolean vk = "VK VIDEO".equals(source);
         boolean dzen = "ДЗЕН".equals(source);
-        if (!dzen) headers.put("Referer", vk ? "https://vkvideo.ru/" : "https://rutube.ru/");
+        boolean ok = "OK".equals(source);
+        if (dzen) {
+            CookieHandler.setDefault(new CookieManager(null, CookiePolicy.ACCEPT_ALL));
+        } else {
+            if (ok) CookieHandler.setDefault(new CookieManager(null, CookiePolicy.ACCEPT_NONE));
+            headers.put("Referer", vk ? "https://vkvideo.ru/"
+                    : ok ? OkClient.REFERER : "https://rutube.ru/");
+        }
         DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
                 .setUserAgent(dzen ? DzenClient.USER_AGENT : vk
                         ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/150 Safari/537.36"
+                        : ok ? OkClient.USER_AGENT
                         : "Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36")
                 .setConnectTimeoutMs(8_000)
                 .setReadTimeoutMs(10_000)

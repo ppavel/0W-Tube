@@ -32,6 +32,7 @@ final class SearchClient {
             String id = item.optString("id");
             String page = item.optString("video_url", "https://rutube.ru/video/" + id + "/");
             String embed = item.optString("embed_url", "https://rutube.ru/play/embed/" + id);
+            embed = copyQueryParameter(page, embed, "p");
             int duration = item.optInt("duration");
             result.add(new VideoItem("RUTUBE", item.optString("title", "Без названия"),
                     "", item.optString("thumbnail_url"),
@@ -58,6 +59,14 @@ final class SearchClient {
         return new DzenClient().search(query, minWidth);
     }
 
+    List<VideoItem> searchOk(String query, int minWidth) throws Exception {
+        return OkClient.search(query, minWidth);
+    }
+
+    int searchDzenPages(String query, DzenClient.PageListener listener) throws Exception {
+        return new DzenClient().searchPages(query, listener);
+    }
+
     static List<VideoItem> filterByQuality(List<VideoItem> candidates, int minWidth) throws Exception {
         return filterByQuality(candidates, minWidth, 4);
     }
@@ -68,6 +77,18 @@ final class SearchClient {
         List<VideoItem> filtered = new ArrayList<>();
         for (VideoItem item : inspected) if (item.maxWidth >= minWidth) filtered.add(item);
         return filtered;
+    }
+
+    private static String copyQueryParameter(String source, String target, String name) {
+        if (source == null || target == null) return target;
+        try {
+            String value = Uri.parse(source).getQueryParameter(name);
+            if (value == null || value.isEmpty()
+                    || Uri.parse(target).getQueryParameter(name) != null) return target;
+            return Uri.parse(target).buildUpon().appendQueryParameter(name, value).build().toString();
+        } catch (Exception ignored) {
+            return target;
+        }
     }
 
     static List<VideoItem> inspectQualities(List<VideoItem> candidates, int maxParallelRequests) {

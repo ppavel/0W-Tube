@@ -324,14 +324,18 @@ public final class PlayerActivity extends Activity {
         String source = getIntent().getStringExtra("source");
         boolean vk = "VK VIDEO".equals(source);
         boolean dzen = "ДЗЕН".equals(source);
+        boolean ok = "OK".equals(source);
         if (dzen) {
             CookieHandler.setDefault(new CookieManager(null, CookiePolicy.ACCEPT_ALL));
         } else {
-            headers.put("Referer", vk ? "https://vkvideo.ru/" : "https://rutube.ru/");
+            if (ok) CookieHandler.setDefault(new CookieManager(null, CookiePolicy.ACCEPT_NONE));
+            headers.put("Referer", vk ? "https://vkvideo.ru/"
+                    : ok ? OkClient.REFERER : "https://rutube.ru/");
         }
         DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
                 .setUserAgent(dzen ? DzenClient.USER_AGENT : vk
                         ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/150 Safari/537.36"
+                        : ok ? OkClient.USER_AGENT
                         : "Mozilla/5.0 (Linux; Android 11; Android TV) AppleWebKit/537.36")
                 .setConnectTimeoutMs(8_000)
                 .setReadTimeoutMs(10_000)

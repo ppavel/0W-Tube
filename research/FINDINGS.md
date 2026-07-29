@@ -1,6 +1,6 @@
 # Результаты исследования источников видео
 
-Дата проверки: 2026-07-11.
+Дата проверки: 2026-07-29.
 
 ## Устройство
 
@@ -42,6 +42,25 @@
 - TV APK использует AndroidX Media3. Проверка на XGIMI показала, что поиск системным клиентом
   работает, а запуск через platform `MediaPlayer` — нет; поэтому приложение также переведено
   на Media3 HLS, сохраняя аппаратный MediaCodec для самого декодирования.
+
+## OK
+
+Проверены публичные страницы OK и extractor `yt-dlp` 2026.07.04.
+
+- анонимный поиск: `GET https://ok.ru/video/search?st.cmd=anonymVideo&st.ft=search&st.gsq={q}&st.m=SEARCH`;
+- результаты находятся в JSON атрибута `data-props` компонента `video-search-result`;
+- карточки содержат ID, заголовок, превью, длительность, размеры и провайдера ролика;
+- параметры плеера находятся в HTML-encoded JSON атрибута `data-options`;
+- метаданные читаются из `flashvars.metadata`, а при его отсутствии загружаются POST-запросом
+  к `flashvars.metadataUrl` с `st.location`;
+- поддерживаются прямые MP4, HLS (`hlsManifestUrl`, `ondemandHls`,
+  `hlsMasterPlaylistUrl`) и DASH (`ondemandDash`, `metadataWebmUrl`);
+- если desktop-плеер недоступен, используется `data-video` мобильной страницы
+  `https://m.ok.ru/video/{id}` и финальный URL после HEAD redirect;
+- как и `yt-dlp`, приложение не передаёт cookies на CDN OK: прямые загрузки с CDN-cookie
+  могут отклоняться;
+- поиск «солярис тарковский» анонимно возвращает нативные ролики OK; формат
+  `https://ok.ru/video/2592237357790` подтверждён через `yt-dlp --simulate -F`.
 
 ## Проверенные файлы
 
