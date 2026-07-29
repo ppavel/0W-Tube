@@ -49,6 +49,11 @@ final class SearchClient {
         return new VkWebClient().search(query, minWidth, thumbnailWidth);
     }
 
+    int searchVkPages(String query, int minWidth, int thumbnailWidth,
+                      VkWebClient.PageListener listener) throws Exception {
+        return new VkWebClient().searchPages(query, minWidth, thumbnailWidth, listener);
+    }
+
     List<VideoItem> searchDzen(String query, int minWidth) throws Exception {
         return new DzenClient().search(query, minWidth);
     }

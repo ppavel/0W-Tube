@@ -199,7 +199,7 @@ final class StreamResolver {
     }
 
     private PlaybackInfo inspectVk(String url, boolean audioOnly) throws Exception {
-        String id = findVkId(url);
+        String id = VkVideoId.fromUrl(url);
         String cacheKey = "vk:" + id + (audioOnly ? ":audio" : "");
         PlaybackInfo cached = CACHE.get(cacheKey);
         if (cached != null && System.currentTimeMillis() - cached.loadedAt < CACHE_MS) return cached;
@@ -431,27 +431,6 @@ final class StreamResolver {
             }
         }
         throw new Exception("Не найден ID RUTUBE");
-    }
-
-    private static String findVkId(String url) throws Exception {
-        int from = 0;
-        while (from < url.length()) {
-            int marker = url.indexOf("video", from);
-            if (marker < 0) break;
-            int start = marker + 5;
-            int cursor = start;
-            if (cursor < url.length() && url.charAt(cursor) == '-') cursor++;
-            int ownerStart = cursor;
-            while (cursor < url.length() && Character.isDigit(url.charAt(cursor))) cursor++;
-            if (cursor > ownerStart && cursor < url.length() && url.charAt(cursor) == '_') {
-                cursor++;
-                int videoStart = cursor;
-                while (cursor < url.length() && Character.isDigit(url.charAt(cursor))) cursor++;
-                if (cursor > videoStart) return url.substring(start, cursor);
-            }
-            from = marker + 5;
-        }
-        throw new Exception("Не найден ID VK Video");
     }
 
     private static String get(String address, String referer) throws Exception {

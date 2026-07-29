@@ -15,11 +15,11 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 
 final class VkWebClient {
     private static final int LIMIT = 12;
+    private static final int MAX_PAGES = 4;
     private static final int TIMEOUT_MS = 10_000;
     private static final String CLIENT_ID = "52461373";
     private static final String API_VERSION = "5.282";
@@ -57,20 +57,68 @@ final class VkWebClient {
         return video;
     }
 
+    interface PageListener {
+        boolean onPage(List<VideoItem> items);
+    }
+
     List<VideoItem> search(String query, int minWidth, int thumbnailWidth) throws Exception {
+        List<VideoItem> result = new ArrayList<>();
+        searchPages(query, minWidth, thumbnailWidth, page -> {
+            result.addAll(page);
+            return true;
+        });
+        if (minWidth <= 0 || result.isEmpty()) return result;
+        return SearchClient.filterByQuality(result, minWidth);
+    }
+
+    int searchPages(String query, int minWidth, int thumbnailWidth,
+                    PageListener listener) throws Exception {
+        String token = getAnonymousToken();
         String address = "https://api.vkvideo.ru/method/catalog.getVideoSearchWeb2"
                 + "?v=" + API_VERSION
                 + "&client_id=" + CLIENT_ID
                 + "&count=30"
                 + "&q=" + Uri.encode(query)
+                + "&content_type=video"
                 + (minWidth > 0 ? "&hd=1" : "")
-                + "&access_token=" + Uri.encode(getAnonymousToken());
+                + "&access_token=" + Uri.encode(token);
         JSONObject root = getJson(address);
+        JSONObject response = response(root);
+        Set<String> seen = new LinkedHashSet<>();
+        int total = 0;
+        int pages = 0;
+        String previousNext = "";
+        while (response != null && total < LIMIT && pages++ < MAX_PAGES
+                && !Thread.currentThread().isInterrupted()) {
+            List<VideoItem> page = parsePage(response, thumbnailWidth, seen, LIMIT - total);
+            total += page.size();
+            if (!page.isEmpty() && !listener.onPage(page)) break;
+            PageCursor cursor = pageCursor(response);
+            if (cursor == null || cursor.nextFrom.equals(previousNext) || total >= LIMIT) break;
+            previousNext = cursor.nextFrom;
+            String body = "section_id=" + Uri.encode(cursor.sectionId)
+                    + "&start_from=" + Uri.encode(cursor.nextFrom)
+                    + "&access_token=" + Uri.encode(token);
+            root = postJson("https://api.vkvideo.ru/method/catalog.getSection"
+                    + "?v=" + API_VERSION + "&client_id=" + CLIENT_ID, body);
+            response = response(root);
+        }
+        return total;
+    }
+
+    private static JSONObject response(JSONObject root) throws Exception {
         JSONObject error = root.optJSONObject("error");
-        if (error != null) throw new Exception("VK Video: " + error.optString("error_msg", "ошибка поиска"));
+        if (error != null) {
+            throw new Exception("VK Video: "
+                    + error.optString("error_msg", "ошибка поиска"));
+        }
         JSONObject response = root.optJSONObject("response");
         if (response == null) throw new Exception("VK Video не отдал результаты");
+        return response;
+    }
 
+    private static List<VideoItem> parsePage(JSONObject response, int thumbnailWidth,
+                                             Set<String> seen, int limit) {
         LinkedHashMap<String, JSONObject> videos = new LinkedHashMap<>();
         JSONArray catalogVideos = response.optJSONArray("catalog_videos");
         if (catalogVideos != null) {
@@ -84,24 +132,36 @@ final class VkWebClient {
         Set<String> orderedIds = new LinkedHashSet<>();
         JSONObject catalog = response.optJSONObject("catalog");
         collectOrderedIds(catalog == null ? null : catalog.optJSONArray("sections"), orderedIds);
+        collectOrderedIds(response.optJSONObject("section"), orderedIds);
         orderedIds.addAll(videos.keySet());
 
         List<VideoItem> result = new ArrayList<>();
         for (String id : orderedIds) {
             JSONObject video = videos.get(id);
-            if (video == null) continue;
-            long owner = video.optLong("owner_id");
-            long videoId = video.optLong("id");
-            String page = "https://vkvideo.ru/video" + owner + "_" + videoId;
+            if (video == null || !seen.add(id)) continue;
+            String page = "https://vkvideo.ru/video" + VkVideoId.fromVideo(video);
             VideoItem item = new VideoItem("VK VIDEO", video.optString("title", "Видео VK"),
                     "", bestImage(video.optJSONArray("image"), thumbnailWidth), page, page,
                     video.optLong("duration") * 1000L);
             int[] dimensions = maxAvailableDimensions(video);
             result.add(item.withQuality(dimensions[0], dimensions[1]));
-            if (result.size() >= LIMIT) break;
+            if (result.size() >= limit) break;
         }
-        if (minWidth <= 0 || result.isEmpty()) return result;
-        return SearchClient.filterByQuality(result, minWidth);
+        return result;
+    }
+
+    private static PageCursor pageCursor(JSONObject response) {
+        JSONObject section = response.optJSONObject("section");
+        if (section == null) {
+            JSONObject catalog = response.optJSONObject("catalog");
+            JSONArray sections = catalog == null ? null : catalog.optJSONArray("sections");
+            section = sections == null ? null : sections.optJSONObject(0);
+        }
+        if (section == null) return null;
+        String sectionId = section.optString("id");
+        String nextFrom = section.optString("next_from");
+        return sectionId.isEmpty() || nextFrom.isEmpty()
+                ? null : new PageCursor(sectionId, nextFrom);
     }
 
     private static synchronized String getAnonymousToken() throws Exception {
@@ -124,14 +184,19 @@ final class VkWebClient {
     private static void collectOrderedIds(JSONArray sections, Set<String> result) {
         if (sections == null) return;
         for (int i = 0; i < sections.length(); i++) {
-            JSONObject section = sections.optJSONObject(i);
-            JSONArray blocks = section == null ? null : section.optJSONArray("blocks");
-            if (blocks == null) continue;
-            for (int j = 0; j < blocks.length(); j++) {
-                JSONObject block = blocks.optJSONObject(j);
-                JSONArray ids = block == null ? null : block.optJSONArray("videos_ids");
-                if (ids == null) continue;
-                for (int k = 0; k < ids.length(); k++) result.add(ids.optString(k));
+            collectOrderedIds(sections.optJSONObject(i), result);
+        }
+    }
+
+    private static void collectOrderedIds(JSONObject section, Set<String> result) {
+        JSONArray blocks = section == null ? null : section.optJSONArray("blocks");
+        if (blocks == null) return;
+        for (int j = 0; j < blocks.length(); j++) {
+            JSONObject block = blocks.optJSONObject(j);
+            JSONArray ids = block == null ? null : block.optJSONArray("videos_ids");
+            if (ids == null) continue;
+            for (int k = 0; k < ids.length(); k++) {
+                result.add(ids.optString(k));
             }
         }
     }
@@ -247,6 +312,16 @@ final class VkWebClient {
         while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
         input.close();
         return output.toString(StandardCharsets.UTF_8.name());
+    }
+
+    private static final class PageCursor {
+        final String sectionId;
+        final String nextFrom;
+
+        PageCursor(String sectionId, String nextFrom) {
+            this.sectionId = sectionId;
+            this.nextFrom = nextFrom;
+        }
     }
 
 }

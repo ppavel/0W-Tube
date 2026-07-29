@@ -286,8 +286,7 @@ public final class MainActivity extends Activity {
         activeSearches.add(network.submit(
                 () -> runSource(current, "RUTUBE", () -> searchClient.searchRutube(value, 0))));
         activeSearches.add(network.submit(
-                () -> runSource(current, "VK Video",
-                        () -> searchClient.searchVk(value, 0, thumbnailTargetWidth))));
+                () -> runVkSource(current, value)));
         activeSearches.add(network.submit(
                 () -> runSource(current, "Дзен", () -> searchClient.searchDzen(value, 0))));
     }
@@ -340,6 +339,32 @@ public final class MainActivity extends Activity {
         } catch (Exception e) {
             runOnUiThread(() -> {
                 if (current == generation.get()) finishSource(source, 0, safeMessage(e));
+            });
+        }
+    }
+
+    private void runVkSource(int current, String value) {
+        int[] delivered = {0};
+        try {
+            int count = searchClient.searchVkPages(value, 0, thumbnailTargetWidth, found -> {
+                if (Thread.currentThread().isInterrupted() || current != generation.get()) return false;
+                delivered[0] += found.size();
+                runOnUiThread(() -> {
+                    if (current != generation.get()) return;
+                    allItems.addAll(found);
+                    refreshDisplayedItems(true);
+                    requestMissingQualities(current, found);
+                });
+                return true;
+            });
+            runOnUiThread(() -> {
+                if (current == generation.get()) finishSource("VK Video", count, null);
+            });
+        } catch (Exception e) {
+            runOnUiThread(() -> {
+                if (current == generation.get()) {
+                    finishSource("VK Video", delivered[0], safeMessage(e));
+                }
             });
         }
     }
