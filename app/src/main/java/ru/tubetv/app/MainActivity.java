@@ -97,20 +97,8 @@ public final class MainActivity extends Activity {
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         imageLoader = ((TubeApplication) getApplication()).imageLoader();
         setContentView(createContent());
-        showPreviousCrash();
         restoreState();
         checkForUpdate();
-    }
-
-    private void showPreviousCrash() {
-        String crash = CrashLog.consume(this);
-        if (crash == null) crash = ExitDiagnostics.consume(this);
-        if (crash == null) return;
-        new AlertDialog.Builder(this)
-                .setTitle("Ошибка предыдущего запуска")
-                .setMessage(crash)
-                .setPositiveButton("Закрыть", null)
-                .show();
     }
 
     private View createContent() {

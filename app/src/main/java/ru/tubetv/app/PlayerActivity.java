@@ -14,7 +14,7 @@ import android.os.Looper;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
-import android.view.SurfaceView;
+import android.view.Surface;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.WindowManager;
@@ -70,27 +70,37 @@ public final class PlayerActivity extends Activity {
         }
     };
     private ExoPlayer player;
-    private SurfaceView videoSurface;
+    private MirrorVideoView videoSurface;
     private ProgressBar loading;
     private SeekBar timeline;
     private TextView message;
     private TextView playState;
+    private TextView mirrorState;
+    private final Runnable clearMirrorPress = () -> {
+        if (mirrorState != null) mirrorState.setSelected(false);
+    };
     private TextView time;
     private LinearLayout controls;
     private FrameLayout.LayoutParams controlsLayoutParams;
     private final Runnable hideControls = () -> {
         controls.animate().cancel();
         controls.setTranslationY(0f);
+        controls.clearFocus();
         controls.setVisibility(View.GONE);
     };
     private String streamUrl;
     private String streamMimeType;
+    private String videoSource;
+    private String videoIdentityUrl;
     private boolean autoPlay;
     private boolean trafficMode;
     private boolean audioOnly;
     private int targetHeight;
     private boolean scrubbing;
     private boolean controlsDragging;
+    private boolean dpadScrubbing;
+    private boolean heldSeekIsLong;
+    private boolean mirrored;
     private boolean audioMovedToBackground;
     private boolean leavingPlayer;
     private long resumePosition;
@@ -101,7 +111,17 @@ public final class PlayerActivity extends Activity {
     private int safeLeft;
     private int safeRight;
     private int safeBottom;
+    private int heldSeekKey = KeyEvent.KEYCODE_UNKNOWN;
+    private long dpadSeekPosition;
     private Thread.UncaughtExceptionHandler previousCrashHandler;
+    private final Runnable beginHeldSeek = () -> {
+        if (heldSeekKey == KeyEvent.KEYCODE_DPAD_LEFT
+                || heldSeekKey == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            heldSeekIsLong = true;
+            beginDpadScrub();
+            moveDpadScrub(seekDelta(heldSeekKey));
+        }
+    };
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -116,6 +136,12 @@ public final class PlayerActivity extends Activity {
         audioOnly = getIntent().getBooleanExtra("audio_only", false);
         targetHeight = Math.max(0, getIntent().getIntExtra("target_height", 0));
         resumePosition = Math.max(0L, getIntent().getLongExtra("resume_position", 0L));
+        videoSource = getIntent().getStringExtra("source");
+        videoIdentityUrl = getIntent().getStringExtra("page_url");
+        if (videoIdentityUrl == null || videoIdentityUrl.isEmpty()) {
+            videoIdentityUrl = getIntent().getStringExtra("resolver_url");
+        }
+        mirrored = WatchProgressStore.isMirrored(this, videoSource, videoIdentityUrl);
         if (getIntent().getBooleanExtra("resume_background_audio", false)) {
             stopService(new Intent(this, AudioPlaybackService.class));
             resumePosition = StateStore.position(this);
@@ -137,7 +163,17 @@ public final class PlayerActivity extends Activity {
             if (event.getActionMasked() == MotionEvent.ACTION_DOWN) showControls();
             return true;
         });
-        videoSurface = new SurfaceView(this);
+        videoSurface = new MirrorVideoView(this);
+        videoSurface.setMirrored(mirrored);
+        videoSurface.setSurfaceListener(new MirrorVideoView.SurfaceListener() {
+            @Override public void onSurfaceAvailable(Surface surface) {
+                if (player != null) player.setVideoSurface(surface);
+            }
+
+            @Override public void onSurfaceDestroyed(Surface surface) {
+                if (player != null) player.clearVideoSurface(surface);
+            }
+        });
         root.addView(videoSurface, new FrameLayout.LayoutParams(-1, -1));
         ImageView speaker = new ImageView(this);
         speaker.setImageResource(R.drawable.ic_speaker);
@@ -183,6 +219,7 @@ public final class PlayerActivity extends Activity {
             }
 
             @Override public void onStartTrackingTouch(SeekBar bar) {
+                dpadScrubbing = false;
                 scrubbing = true;
                 ui.removeCallbacks(hideControls);
             }
@@ -205,12 +242,21 @@ public final class PlayerActivity extends Activity {
         TextView rewind = controlButton("◀  −15 сек");
         playState = controlButton("▶");
         TextView forward = controlButton("+30 сек  ▶");
+        String mirrorLabel = isCompactPlayer() ? "↔"
+                : DeviceType.isTelevision(this) ? "▼  Зеркало" : "↔  Зеркало";
+        mirrorState = controlButton(mirrorLabel);
         rewind.setOnClickListener(v -> seekBy(-15_000));
         playState.setOnClickListener(v -> togglePlayback());
         forward.setOnClickListener(v -> seekBy(30_000));
+        mirrorState.setContentDescription("Зеркальное отображение");
+        mirrorState.setOnClickListener(v -> toggleMirror());
         row.addView(rewind, new LinearLayout.LayoutParams(0, dp(42), 1f));
         row.addView(playState, new LinearLayout.LayoutParams(0, dp(42), 0.65f));
         row.addView(forward, new LinearLayout.LayoutParams(0, dp(42), 1f));
+        if (!audioOnly) {
+            row.addView(mirrorState, new LinearLayout.LayoutParams(0, dp(42),
+                    isCompactPlayer() ? 0.55f : 0.8f));
+        }
         controls.addView(row, new LinearLayout.LayoutParams(-1, dp(46)));
 
         controlsLayoutParams = new FrameLayout.LayoutParams(-1, dp(122), Gravity.BOTTOM);
@@ -296,14 +342,21 @@ public final class PlayerActivity extends Activity {
             List<MediaCodecInfo> available = MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, secure, tunneling);
             if (!mimeType.startsWith("video/") && !mimeType.startsWith("audio/")) return available;
             boolean video = mimeType.startsWith("video/");
-            if (!capabilities.supportsHardware(mimeType)) {
-                return video ? new ArrayList<>() : available;
-            }
             List<MediaCodecInfo> hardware = new ArrayList<>();
             for (MediaCodecInfo codec : available) {
                 if (codec.hardwareAccelerated && !codec.softwareOnly) hardware.add(codec);
             }
-            return video || !hardware.isEmpty() ? hardware : available;
+            if (video) {
+                return capabilities.supportsHardware(mimeType) ? hardware : new ArrayList<>();
+            }
+            // Some TV firmware advertises a hardware AAC decoder that accepts mono only.
+            // Keep compatible software audio decoders after hardware candidates so Media3
+            // can fall back for stereo tracks without ever allowing software video.
+            List<MediaCodecInfo> ordered = new ArrayList<>(hardware);
+            for (MediaCodecInfo codec : available) {
+                if (!hardware.contains(codec)) ordered.add(codec);
+            }
+            return ordered;
         };
         player = new ExoPlayer.Builder(this)
                 .setRenderersFactory(new DefaultRenderersFactory(this)
@@ -335,7 +388,9 @@ public final class PlayerActivity extends Activity {
                 .setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
                 .build(), true);
-        player.setVideoSurfaceView(videoSurface);
+        videoSurface.setMirrored(mirrored);
+        Surface output = videoSurface.getVideoSurface();
+        if (output != null) player.setVideoSurface(output);
         player.addListener(new Player.Listener() {
             @Override public void onPlaybackStateChanged(int state) {
                 if (state == Player.STATE_READY) {
@@ -384,7 +439,7 @@ public final class PlayerActivity extends Activity {
 
     private void scheduleControlsHide() {
         ui.removeCallbacks(hideControls);
-        if (audioOnly || scrubbing || controlsDragging || player == null
+        if (audioOnly || scrubbing || dpadScrubbing || controlsDragging || player == null
                 || controls.getVisibility() != View.VISIBLE
                 || player.getPlaybackState() == Player.STATE_ENDED) return;
         ui.postDelayed(hideControls, player.isPlaying()
@@ -396,12 +451,14 @@ public final class PlayerActivity extends Activity {
         long position = Math.max(0, player.getCurrentPosition());
         long duration = player.getDuration();
         if (!scrubbing) {
+            long displayedPosition = dpadScrubbing ? dpadSeekPosition : position;
             if (duration <= 0 || duration == C.TIME_UNSET) {
                 timeline.setProgress(0);
-                time.setText(formatTime(position) + " / —");
+                time.setText(formatTime(displayedPosition) + " / —");
             } else {
-                timeline.setProgress((int) Math.min(1000, position * 1000 / duration));
-                time.setText(formatTime(position) + " / " + formatTime(duration));
+                timeline.setProgress((int) Math.min(1000,
+                        displayedPosition * 1000 / duration));
+                time.setText(formatTime(displayedPosition) + " / " + formatTime(duration));
             }
         }
         playState.setText(player.isPlaying() ? "Ⅱ" : "▶");
@@ -415,7 +472,9 @@ public final class PlayerActivity extends Activity {
 
     private void togglePlayback() {
         if (player == null) return;
-        if (player.isPlaying()) player.pause(); else player.play();
+        boolean wasPlaying = player.isPlaying();
+        commitDpadScrub();
+        if (wasPlaying) player.pause(); else player.play();
         showControls();
     }
 
@@ -425,6 +484,86 @@ public final class PlayerActivity extends Activity {
         long duration = player.getDuration();
         if (duration > 0 && duration != C.TIME_UNSET) target = Math.min(target, duration);
         player.seekTo(target);
+        showControls();
+    }
+
+    private void beginDpadScrub() {
+        if (player == null) return;
+        if (!dpadScrubbing) {
+            dpadSeekPosition = Math.max(0L, player.getCurrentPosition());
+            dpadScrubbing = true;
+        }
+        showControls();
+        ui.removeCallbacks(hideControls);
+    }
+
+    private void moveDpadScrub(long deltaMs) {
+        if (player == null) return;
+        beginDpadScrub();
+        long target = Math.max(0L, dpadSeekPosition + deltaMs);
+        long duration = player.getDuration();
+        if (duration > 0 && duration != C.TIME_UNSET) target = Math.min(target, duration);
+        dpadSeekPosition = target;
+        updateControls();
+    }
+
+    private void commitDpadScrub() {
+        if (player == null || !dpadScrubbing) return;
+        long position = dpadSeekPosition;
+        dpadScrubbing = false;
+        player.seekTo(position);
+    }
+
+    private static long seekDelta(int keyCode) {
+        return keyCode == KeyEvent.KEYCODE_DPAD_LEFT ? -15_000L : 30_000L;
+    }
+
+    private boolean handleHorizontalDpad(KeyEvent event) {
+        int keyCode = event.getKeyCode();
+        if (keyCode != KeyEvent.KEYCODE_DPAD_LEFT
+                && keyCode != KeyEvent.KEYCODE_DPAD_RIGHT) return false;
+        if (player == null) return true;
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            if (event.getRepeatCount() == 0 || heldSeekKey != keyCode) {
+                ui.removeCallbacks(beginHeldSeek);
+                heldSeekKey = keyCode;
+                heldSeekIsLong = false;
+                ui.postDelayed(beginHeldSeek, ViewConfiguration.getLongPressTimeout());
+            } else {
+                if (!heldSeekIsLong) {
+                    ui.removeCallbacks(beginHeldSeek);
+                    heldSeekIsLong = true;
+                    beginDpadScrub();
+                    moveDpadScrub(seekDelta(keyCode));
+                } else {
+                    moveDpadScrub(seekDelta(keyCode));
+                }
+            }
+            return true;
+        }
+        if (event.getAction() == KeyEvent.ACTION_UP && heldSeekKey == keyCode) {
+            ui.removeCallbacks(beginHeldSeek);
+            if (!heldSeekIsLong) {
+                if (dpadScrubbing) moveDpadScrub(seekDelta(keyCode));
+                else seekBy(seekDelta(keyCode));
+            } else {
+                commitDpadScrub();
+                showControls();
+            }
+            heldSeekKey = KeyEvent.KEYCODE_UNKNOWN;
+            heldSeekIsLong = false;
+            return true;
+        }
+        return true;
+    }
+
+    private void toggleMirror() {
+        mirrored = !mirrored;
+        videoSurface.setMirrored(mirrored);
+        saveMirrorState();
+        ui.removeCallbacks(clearMirrorPress);
+        mirrorState.setSelected(true);
+        ui.postDelayed(clearMirrorPress, 180L);
         showControls();
     }
 
@@ -573,6 +712,17 @@ public final class PlayerActivity extends Activity {
         message.setText(text + "\n\nOK — открыть официальный плеер");
     }
 
+    @Override public boolean dispatchKeyEvent(KeyEvent event) {
+        if (handleHorizontalDpad(event)) return true;
+        if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_DOWN) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                if (audioOnly) showControls(); else toggleMirror();
+            }
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
     @Override public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER
                 || keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
@@ -581,15 +731,7 @@ public final class PlayerActivity extends Activity {
             } else openOfficial();
             return true;
         }
-        if (player != null && keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-            seekBy(-15_000);
-            return true;
-        }
-        if (player != null && keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-            seekBy(30_000);
-            return true;
-        }
-        if (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+        if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
             showControls();
             return true;
         }
@@ -604,10 +746,17 @@ public final class PlayerActivity extends Activity {
     }
 
     private void saveProgress() {
+        saveMirrorState();
         if (player != null) {
             long position = player.getCurrentPosition();
             StateStore.savePlayerPosition(this, position);
             saveWatchProgress(position, player.getDuration());
+        }
+    }
+
+    private void saveMirrorState() {
+        if (!audioOnly) {
+            WatchProgressStore.setMirrored(this, videoSource, videoIdentityUrl, mirrored);
         }
     }
 
@@ -639,6 +788,16 @@ public final class PlayerActivity extends Activity {
             audioMovedToBackground = false;
         }
         if (player != null && !player.isPlaying()) showControls();
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        if (videoSurface != null) videoSurface.onResume();
+    }
+
+    @Override protected void onPause() {
+        if (videoSurface != null) videoSurface.onPause();
+        super.onPause();
     }
 
     @Override protected void onStop() {
@@ -691,15 +850,19 @@ public final class PlayerActivity extends Activity {
     @Override protected void onDestroy() {
         resolver.shutdownNow();
         ui.removeCallbacksAndMessages(null);
-        if (player != null) {
-            player.setVideoSurfaceView(null);
-            player.release();
-            player = null;
-        }
+        releasePlayer();
+        if (videoSurface != null) videoSurface.release();
         if (Thread.getDefaultUncaughtExceptionHandler() != previousCrashHandler) {
             Thread.setDefaultUncaughtExceptionHandler(previousCrashHandler);
         }
         super.onDestroy();
+    }
+
+    private void releasePlayer() {
+        if (player == null) return;
+        player.clearVideoSurface();
+        player.release();
+        player = null;
     }
 
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }

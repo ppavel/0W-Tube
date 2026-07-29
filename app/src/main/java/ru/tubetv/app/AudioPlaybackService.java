@@ -100,14 +100,18 @@ public final class AudioPlaybackService extends Service {
                     .getDecoderInfos(mimeType, secure, tunneling);
             if (!mimeType.startsWith("audio/") && !mimeType.startsWith("video/")) return available;
             boolean video = mimeType.startsWith("video/");
-            if (!capabilities.supportsHardware(mimeType)) {
-                return video ? new ArrayList<>() : available;
-            }
             List<MediaCodecInfo> hardware = new ArrayList<>();
             for (MediaCodecInfo codec : available) {
                 if (codec.hardwareAccelerated && !codec.softwareOnly) hardware.add(codec);
             }
-            return video || !hardware.isEmpty() ? hardware : available;
+            if (video) {
+                return capabilities.supportsHardware(mimeType) ? hardware : new ArrayList<>();
+            }
+            List<MediaCodecInfo> ordered = new ArrayList<>(hardware);
+            for (MediaCodecInfo codec : available) {
+                if (!hardware.contains(codec)) ordered.add(codec);
+            }
+            return ordered;
         };
         player = new ExoPlayer.Builder(this)
                 .setRenderersFactory(new DefaultRenderersFactory(this)

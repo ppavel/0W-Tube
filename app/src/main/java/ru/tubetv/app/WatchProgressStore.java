@@ -27,6 +27,18 @@ final class WatchProgressStore {
         return position >= MIN_POSITION_MS ? new Progress(position, duration) : new Progress(0L, duration);
     }
 
+    static void setMirrored(Context context, String source, String pageUrl, boolean mirrored) {
+        if (pageUrl == null || pageUrl.isEmpty()) return;
+        // This setting is commonly changed immediately before leaving the player.
+        // Persist it synchronously so aggressive TV firmware cannot kill the process first.
+        prefs(context).edit().putBoolean(key(source, pageUrl) + "_mirrored", mirrored).commit();
+    }
+
+    static boolean isMirrored(Context context, String source, String pageUrl) {
+        if (pageUrl == null || pageUrl.isEmpty()) return false;
+        return prefs(context).getBoolean(key(source, pageUrl) + "_mirrored", false);
+    }
+
     private static String key(String source, String pageUrl) {
         String value = (source == null ? "" : source) + '|' + (pageUrl == null ? "" : pageUrl);
         try {
