@@ -45,6 +45,10 @@ final class StateStore {
         prefs(context).edit().putLong("position", Math.max(0, position)).apply();
     }
 
+    static void savePlaybackSpeed(Context context, float speed) {
+        prefs(context).edit().putFloat("playback_speed", speed).apply();
+    }
+
     static void markSearch(Context context) {
         prefs(context).edit().putString("screen", "search").apply();
     }
@@ -57,6 +61,7 @@ final class StateStore {
     static int playerTargetHeight(Context context) { return prefs(context).getInt("player_target_height", 0); }
     static boolean playerAudioOnly(Context context) { return prefs(context).getBoolean("player_audio_only", false); }
     static long position(Context context) { return prefs(context).getLong("position", 0L); }
+    static float playbackSpeed(Context context) { return prefs(context).getFloat("playback_speed", 1f); }
 
     static VideoItem playerItem(Context context) {
         SharedPreferences p = prefs(context);

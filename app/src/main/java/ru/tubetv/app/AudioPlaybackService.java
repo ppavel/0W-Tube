@@ -78,12 +78,13 @@ public final class AudioPlaybackService extends Service {
         knownDuration = Math.max(0L, intent.getLongExtra("duration_ms", 0L));
         startForeground(NOTIFICATION_ID, buildNotification(intent));
         startPlayer(streamUrl, intent.getStringExtra("stream_mime_type"),
-                Math.max(0L, intent.getLongExtra("resume_position", 0L)));
+                Math.max(0L, intent.getLongExtra("resume_position", 0L)),
+                intent.getFloatExtra("playback_speed", 1f));
         return START_NOT_STICKY;
     }
 
     @OptIn(markerClass = UnstableApi.class)
-    private void startPlayer(String streamUrl, String streamMimeType, long position) {
+    private void startPlayer(String streamUrl, String streamMimeType, long position, float speed) {
         releasePlayer();
         Map<String, String> headers = new HashMap<>();
         boolean vk = "VK VIDEO".equals(source);
@@ -153,6 +154,7 @@ public final class AudioPlaybackService extends Service {
         else if (streamUrl.contains(".mpd")) item.setMimeType(MimeTypes.APPLICATION_MPD);
         player.setMediaItem(item.build());
         if (position > 0) player.seekTo(position);
+        player.setPlaybackSpeed(speed);
         player.prepare();
         player.play();
         ui.post(progressTicker);

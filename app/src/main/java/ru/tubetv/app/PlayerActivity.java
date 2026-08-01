@@ -61,6 +61,8 @@ import java.util.concurrent.Executors;
 public final class PlayerActivity extends Activity {
     private static final long PLAYING_CONTROLS_TIMEOUT_MS = 3500L;
     private static final long PAUSED_CONTROLS_TIMEOUT_MS = 1000L;
+    private static final int CONTROLS_HEIGHT_DP = 122;
+    private static final float[] PLAYBACK_SPEEDS = {0.75f, 1f, 1.25f, 1.5f, 2f};
     private final ExecutorService resolver = Executors.newSingleThreadExecutor();
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final Runnable progressTicker = new Runnable() {
@@ -75,12 +77,14 @@ public final class PlayerActivity extends Activity {
     private SeekBar timeline;
     private TextView message;
     private TextView playState;
-    private TextView mirrorState;
-    private final Runnable clearMirrorPress = () -> {
-        if (mirrorState != null) mirrorState.setSelected(false);
-    };
+    private TextView settingsState;
     private TextView time;
     private LinearLayout controls;
+    private LinearLayout playbackMenu;
+    private LinearLayout mirrorOptions;
+    private final List<TextView> speedOptions = new ArrayList<>();
+    private TextView normalMirrorOption;
+    private TextView mirroredOption;
     private FrameLayout.LayoutParams controlsLayoutParams;
     private final Runnable hideControls = () -> {
         controls.animate().cancel();
@@ -101,6 +105,9 @@ public final class PlayerActivity extends Activity {
     private boolean dpadScrubbing;
     private boolean heldSeekIsLong;
     private boolean mirrored;
+    private boolean playbackMenuVisible;
+    private boolean centerLongPressTriggered;
+    private boolean centerKeyHeld;
     private boolean audioMovedToBackground;
     private boolean leavingPlayer;
     private long resumePosition;
@@ -113,7 +120,14 @@ public final class PlayerActivity extends Activity {
     private int safeBottom;
     private int heldSeekKey = KeyEvent.KEYCODE_UNKNOWN;
     private long dpadSeekPosition;
+    private float playbackSpeed;
     private Thread.UncaughtExceptionHandler previousCrashHandler;
+    private final Runnable openMenuFromLongCenter = () -> {
+        if (centerKeyHeld && player != null) {
+            centerLongPressTriggered = true;
+            setPlaybackMenuVisible(true);
+        }
+    };
     private final Runnable beginHeldSeek = () -> {
         if (heldSeekKey == KeyEvent.KEYCODE_DPAD_LEFT
                 || heldSeekKey == KeyEvent.KEYCODE_DPAD_RIGHT) {
@@ -138,6 +152,7 @@ public final class PlayerActivity extends Activity {
         resumePosition = Math.max(0L, getIntent().getLongExtra("resume_position", 0L));
         videoSource = getIntent().getStringExtra("source");
         videoIdentityUrl = getIntent().getStringExtra("page_url");
+        playbackSpeed = normalizedPlaybackSpeed(StateStore.playbackSpeed(this));
         if (videoIdentityUrl == null || videoIdentityUrl.isEmpty()) {
             videoIdentityUrl = getIntent().getStringExtra("resolver_url");
         }
@@ -160,7 +175,10 @@ public final class PlayerActivity extends Activity {
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
         root.setOnTouchListener((view, event) -> {
-            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) showControls();
+            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                if (playbackMenuVisible) setPlaybackMenuVisible(false);
+                else showControls();
+            }
             return true;
         });
         videoSurface = new MirrorVideoView(this);
@@ -195,6 +213,9 @@ public final class PlayerActivity extends Activity {
         controls.setOrientation(LinearLayout.VERTICAL);
         controls.setBackgroundResource(R.drawable.player_controls_background);
         controls.setVisibility(audioOnly ? View.VISIBLE : View.GONE);
+
+        playbackMenu = createPlaybackMenu();
+        controls.addView(playbackMenu, new LinearLayout.LayoutParams(-1, dp(playbackMenuHeightDp())));
 
         LinearLayout titleRow = new LinearLayout(this);
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -242,24 +263,20 @@ public final class PlayerActivity extends Activity {
         TextView rewind = controlButton("◀  −15 сек");
         playState = controlButton("▶");
         TextView forward = controlButton("+30 сек  ▶");
-        String mirrorLabel = isCompactPlayer() ? "↔"
-                : DeviceType.isTelevision(this) ? "▼  Зеркало" : "↔  Зеркало";
-        mirrorState = controlButton(mirrorLabel);
+        settingsState = controlButton(settingsLabel());
         rewind.setOnClickListener(v -> seekBy(-15_000));
         playState.setOnClickListener(v -> togglePlayback());
         forward.setOnClickListener(v -> seekBy(30_000));
-        mirrorState.setContentDescription("Зеркальное отображение");
-        mirrorState.setOnClickListener(v -> toggleMirror());
+        settingsState.setContentDescription("Скорость и зеркальное отображение");
+        settingsState.setOnClickListener(v -> setPlaybackMenuVisible(!playbackMenuVisible));
         row.addView(rewind, new LinearLayout.LayoutParams(0, dp(42), 1f));
         row.addView(playState, new LinearLayout.LayoutParams(0, dp(42), 0.65f));
         row.addView(forward, new LinearLayout.LayoutParams(0, dp(42), 1f));
-        if (!audioOnly) {
-            row.addView(mirrorState, new LinearLayout.LayoutParams(0, dp(42),
-                    isCompactPlayer() ? 0.55f : 0.8f));
-        }
+        row.addView(settingsState, new LinearLayout.LayoutParams(0, dp(42),
+                isCompactPlayer() ? 0.7f : 0.9f));
         controls.addView(row, new LinearLayout.LayoutParams(-1, dp(46)));
 
-        controlsLayoutParams = new FrameLayout.LayoutParams(-1, dp(122), Gravity.BOTTOM);
+        controlsLayoutParams = new FrameLayout.LayoutParams(-1, dp(CONTROLS_HEIGHT_DP), Gravity.BOTTOM);
         applyControlsLayout();
         root.addView(controls, controlsLayoutParams);
         ViewCompat.setOnApplyWindowInsetsListener(root, (view, windowInsets) -> {
@@ -287,7 +304,58 @@ public final class PlayerActivity extends Activity {
         TextView button = label(value, 15);
         button.setGravity(Gravity.CENTER);
         button.setBackgroundResource(R.drawable.filter_chip_background);
+        button.setFocusable(true);
         return button;
+    }
+
+    private LinearLayout createPlaybackMenu() {
+        LinearLayout menu = new LinearLayout(this);
+        menu.setOrientation(LinearLayout.VERTICAL);
+        menu.setVisibility(View.GONE);
+        menu.setPadding(0, 0, 0, dp(8));
+
+        TextView speedTitle = label("Скорость", isCompactPlayer() ? 12 : 14);
+        speedTitle.setGravity(Gravity.CENTER_VERTICAL);
+        menu.addView(speedTitle, new LinearLayout.LayoutParams(-1, dp(20)));
+
+        LinearLayout speedRow = new LinearLayout(this);
+        for (float speed : PLAYBACK_SPEEDS) {
+            TextView option = settingsOption(speedLabel(speed));
+            option.setTag(speed);
+            option.setOnClickListener(view -> setPlaybackSpeed((Float) view.getTag()));
+            speedOptions.add(option);
+            LinearLayout.LayoutParams optionParams = new LinearLayout.LayoutParams(0, dp(34), 1f);
+            optionParams.setMargins(dp(3), 0, dp(3), 0);
+            speedRow.addView(option, optionParams);
+        }
+        menu.addView(speedRow, new LinearLayout.LayoutParams(-1, dp(36)));
+
+        mirrorOptions = new LinearLayout(this);
+        mirrorOptions.setGravity(Gravity.CENTER_VERTICAL);
+        TextView mirrorTitle = label("Отображение", isCompactPlayer() ? 12 : 14);
+        mirrorTitle.setGravity(Gravity.CENTER_VERTICAL);
+        normalMirrorOption = settingsOption("Обычное");
+        mirroredOption = settingsOption("Зеркальное");
+        normalMirrorOption.setOnClickListener(view -> setMirrored(false));
+        mirroredOption.setOnClickListener(view -> setMirrored(true));
+        mirrorOptions.addView(mirrorTitle, new LinearLayout.LayoutParams(0, dp(34), 0.8f));
+        LinearLayout.LayoutParams normalParams = new LinearLayout.LayoutParams(0, dp(34), 1f);
+        normalParams.setMargins(dp(3), 0, dp(3), 0);
+        mirrorOptions.addView(normalMirrorOption, normalParams);
+        LinearLayout.LayoutParams mirroredParams = new LinearLayout.LayoutParams(0, dp(34), 1f);
+        mirroredParams.setMargins(dp(3), 0, dp(3), 0);
+        mirrorOptions.addView(mirroredOption, mirroredParams);
+        mirrorOptions.setVisibility(audioOnly ? View.GONE : View.VISIBLE);
+        menu.addView(mirrorOptions, new LinearLayout.LayoutParams(-1, dp(38)));
+        updatePlaybackSettingsUi();
+        return menu;
+    }
+
+    private TextView settingsOption(String value) {
+        TextView option = controlButton(value);
+        option.setTextSize(isCompactPlayer() ? 12 : 14);
+        option.setPadding(dp(4), 0, dp(4), 0);
+        return option;
     }
 
     private void resolveStream() {
@@ -427,6 +495,7 @@ public final class PlayerActivity extends Activity {
         else if (streamUrl.contains(".mpd")) item.setMimeType(MimeTypes.APPLICATION_MPD);
         player.setMediaItem(item.build());
         if (resumePosition > 0) player.seekTo(resumePosition);
+        player.setPlaybackSpeed(playbackSpeed);
         player.setPlayWhenReady(autoPlay);
         player.prepare();
         ui.post(progressTicker);
@@ -443,7 +512,8 @@ public final class PlayerActivity extends Activity {
 
     private void scheduleControlsHide() {
         ui.removeCallbacks(hideControls);
-        if (audioOnly || scrubbing || dpadScrubbing || controlsDragging || player == null
+        if (audioOnly || playbackMenuVisible || scrubbing || dpadScrubbing
+                || controlsDragging || player == null
                 || controls.getVisibility() != View.VISIBLE
                 || player.getPlaybackState() == Player.STATE_ENDED) return;
         ui.postDelayed(hideControls, player.isPlaying()
@@ -561,14 +631,78 @@ public final class PlayerActivity extends Activity {
         return true;
     }
 
-    private void toggleMirror() {
-        mirrored = !mirrored;
+    private void setMirrored(boolean value) {
+        if (audioOnly || mirrored == value) return;
+        mirrored = value;
         videoSurface.setMirrored(mirrored);
         saveMirrorState();
-        ui.removeCallbacks(clearMirrorPress);
-        mirrorState.setSelected(true);
-        ui.postDelayed(clearMirrorPress, 180L);
-        showControls();
+        updatePlaybackSettingsUi();
+    }
+
+    private void setPlaybackSpeed(float speed) {
+        playbackSpeed = normalizedPlaybackSpeed(speed);
+        StateStore.savePlaybackSpeed(this, playbackSpeed);
+        if (player != null) player.setPlaybackSpeed(playbackSpeed);
+        updatePlaybackSettingsUi();
+    }
+
+    private void setPlaybackMenuVisible(boolean visible) {
+        if (playbackMenu == null || settingsState == null) return;
+        playbackMenuVisible = visible;
+        playbackMenu.setVisibility(visible ? View.VISIBLE : View.GONE);
+        settingsState.setSelected(visible);
+        controlsLayoutParams.height = dp(CONTROLS_HEIGHT_DP
+                + (visible ? playbackMenuHeightDp() : 0));
+        controls.setLayoutParams(controlsLayoutParams);
+        if (visible) {
+            showControls();
+            TextView selected = selectedSpeedOption();
+            if (DeviceType.isTelevision(this) && selected != null) selected.requestFocus();
+        } else {
+            controls.clearFocus();
+            scheduleControlsHide();
+        }
+    }
+
+    private void updatePlaybackSettingsUi() {
+        if (settingsState != null) settingsState.setText(settingsLabel());
+        for (TextView option : speedOptions) {
+            Object tag = option.getTag();
+            option.setSelected(tag instanceof Float
+                    && Math.abs((Float) tag - playbackSpeed) < 0.001f);
+        }
+        if (normalMirrorOption != null) normalMirrorOption.setSelected(!mirrored);
+        if (mirroredOption != null) mirroredOption.setSelected(mirrored);
+    }
+
+    private TextView selectedSpeedOption() {
+        for (TextView option : speedOptions) {
+            if (option.isSelected()) return option;
+        }
+        return speedOptions.isEmpty() ? null : speedOptions.get(0);
+    }
+
+    private String settingsLabel() {
+        return "⚙  " + speedLabel(playbackSpeed) + (mirrored && !audioOnly ? "  ↔" : "");
+    }
+
+    private int playbackMenuHeightDp() {
+        return audioOnly ? 64 : 102;
+    }
+
+    private static float normalizedPlaybackSpeed(float speed) {
+        for (float supported : PLAYBACK_SPEEDS) {
+            if (Math.abs(supported - speed) < 0.01f) return supported;
+        }
+        return 1f;
+    }
+
+    private static String speedLabel(float speed) {
+        if (Math.abs(speed - 1f) < 0.001f) return "1×";
+        if (Math.abs(speed - 2f) < 0.001f) return "2×";
+        if (Math.abs(speed - 0.75f) < 0.001f) return "0,75×";
+        if (Math.abs(speed - 1.25f) < 0.001f) return "1,25×";
+        return "1,5×";
     }
 
     private static int[] videoSizeForHeight(int height) {
@@ -717,19 +851,46 @@ public final class PlayerActivity extends Activity {
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
-        if (handleHorizontalDpad(event)) return true;
-        if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_DOWN) {
+        int keyCode = event.getKeyCode();
+        if (keyCode == KeyEvent.KEYCODE_MENU) {
             if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
-                if (audioOnly) showControls(); else toggleMirror();
+                setPlaybackMenuVisible(!playbackMenuVisible);
             }
             return true;
         }
+        boolean centerKey = keyCode == KeyEvent.KEYCODE_DPAD_CENTER
+                || keyCode == KeyEvent.KEYCODE_ENTER;
+        if (centerKey && (centerKeyHeld || !playbackMenuVisible)) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                if (event.getRepeatCount() == 0) {
+                    centerKeyHeld = true;
+                    centerLongPressTriggered = false;
+                    ui.postDelayed(openMenuFromLongCenter,
+                            ViewConfiguration.getLongPressTimeout());
+                }
+                return true;
+            }
+            if (event.getAction() == KeyEvent.ACTION_UP) {
+                ui.removeCallbacks(openMenuFromLongCenter);
+                centerKeyHeld = false;
+                if (!centerLongPressTriggered) {
+                    if (player != null && player.getPlaybackState() != Player.STATE_IDLE) {
+                        togglePlayback();
+                    } else {
+                        openOfficial();
+                    }
+                }
+                centerLongPressTriggered = false;
+                return true;
+            }
+        }
+        if (playbackMenuVisible) return super.dispatchKeyEvent(event);
+        if (handleHorizontalDpad(event)) return true;
         return super.dispatchKeyEvent(event);
     }
 
     @Override public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER
-                || keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
+        if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
             if (player != null && player.getPlaybackState() != Player.STATE_IDLE) {
                 togglePlayback();
             } else openOfficial();
@@ -743,6 +904,10 @@ public final class PlayerActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
+        if (playbackMenuVisible) {
+            setPlaybackMenuVisible(false);
+            return;
+        }
         leavingPlayer = true;
         saveProgress();
         StateStore.markSearch(this);
@@ -823,6 +988,7 @@ public final class PlayerActivity extends Activity {
         background.putExtra("stream_mime_type", streamMimeType);
         background.putExtra("resume_position", player == null ? 0L : player.getCurrentPosition());
         background.putExtra("duration_ms", knownDuration);
+        background.putExtra("playback_speed", playbackSpeed);
         try {
             ContextCompat.startForegroundService(this, background);
             audioMovedToBackground = true;
