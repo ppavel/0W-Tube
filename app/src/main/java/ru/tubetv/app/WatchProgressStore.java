@@ -39,7 +39,7 @@ final class WatchProgressStore {
         return prefs(context).getBoolean(key(source, pageUrl) + "_mirrored", false);
     }
 
-    private static String key(String source, String pageUrl) {
+    static String key(String source, String pageUrl) {
         String value = (source == null ? "" : source) + '|' + (pageUrl == null ? "" : pageUrl);
         try {
             byte[] bytes = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));

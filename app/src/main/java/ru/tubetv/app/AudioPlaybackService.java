@@ -53,6 +53,10 @@ public final class AudioPlaybackService extends Service {
     private String source;
     private String pageUrl;
     private long knownDuration;
+    private VideoItem historyItem;
+    private boolean historyRecordedThisSession;
+    private boolean trafficMode;
+    private int targetHeight;
 
     @Override public void onCreate() {
         super.onCreate();
@@ -76,6 +80,19 @@ public final class AudioPlaybackService extends Service {
         source = intent.getStringExtra("source");
         pageUrl = intent.getStringExtra("page_url");
         knownDuration = Math.max(0L, intent.getLongExtra("duration_ms", 0L));
+        trafficMode = intent.getBooleanExtra("traffic_mode", false);
+        targetHeight = Math.max(0, intent.getIntExtra("target_height", 0));
+        historyItem = new VideoItem(
+                source,
+                intent.getStringExtra("title"),
+                intent.getStringExtra("subtitle"),
+                intent.getStringExtra("thumbnail"),
+                intent.getStringExtra("resolver_url"),
+                pageUrl,
+                knownDuration)
+                .withQuality(Math.max(0, intent.getIntExtra("max_width", 0)),
+                        Math.max(0, intent.getIntExtra("max_height", 0)));
+        historyRecordedThisSession = WatchHistoryStore.contains(this, historyItem);
         startForeground(NOTIFICATION_ID, buildNotification(intent));
         startPlayer(streamUrl, intent.getStringExtra("stream_mime_type"),
                 Math.max(0L, intent.getLongExtra("resume_position", 0L)),
@@ -203,6 +220,11 @@ public final class AudioPlaybackService extends Service {
         if (duration > 0) knownDuration = duration;
         StateStore.savePlayerPosition(this, position);
         WatchProgressStore.save(this, source, pageUrl, position, Math.max(0L, duration));
+        if (!historyRecordedThisSession && position >= WatchProgressStore.MIN_POSITION_MS) {
+            WatchHistoryStore.record(this, historyItem.withDuration(duration),
+                    trafficMode, targetHeight, true);
+            historyRecordedThisSession = true;
+        }
     }
 
     private void releasePlayer() {

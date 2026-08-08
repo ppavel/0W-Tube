@@ -46,6 +46,11 @@ final class VideoItem {
         return new VideoItem(source, title, subtitle, thumbnail, playUrl, pageUrl, durationMs, width, height);
     }
 
+    VideoItem withDuration(long duration) {
+        return new VideoItem(source, title, subtitle, thumbnail, playUrl, pageUrl,
+                duration, maxWidth, maxHeight);
+    }
+
     String qualityLabel() { return qualityLabel(maxWidth); }
 
     private static String qualityLabel(int width) {

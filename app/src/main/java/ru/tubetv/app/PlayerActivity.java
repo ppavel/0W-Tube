@@ -105,6 +105,7 @@ public final class PlayerActivity extends Activity {
     private boolean dpadScrubbing;
     private boolean heldSeekIsLong;
     private boolean mirrored;
+    private boolean historyRecordedThisSession;
     private boolean playbackMenuVisible;
     private boolean centerLongPressTriggered;
     private boolean centerKeyHeld;
@@ -121,6 +122,7 @@ public final class PlayerActivity extends Activity {
     private int heldSeekKey = KeyEvent.KEYCODE_UNKNOWN;
     private long dpadSeekPosition;
     private float playbackSpeed;
+    private VideoItem historyItem;
     private Thread.UncaughtExceptionHandler previousCrashHandler;
     private final Runnable openMenuFromLongCenter = () -> {
         if (centerKeyHeld && player != null) {
@@ -152,6 +154,18 @@ public final class PlayerActivity extends Activity {
         resumePosition = Math.max(0L, getIntent().getLongExtra("resume_position", 0L));
         videoSource = getIntent().getStringExtra("source");
         videoIdentityUrl = getIntent().getStringExtra("page_url");
+        knownDuration = Math.max(0L, getIntent().getLongExtra("duration_ms", 0L));
+        historyItem = new VideoItem(
+                videoSource,
+                getIntent().getStringExtra("title"),
+                getIntent().getStringExtra("subtitle"),
+                getIntent().getStringExtra("thumbnail"),
+                getIntent().getStringExtra("resolver_url"),
+                videoIdentityUrl,
+                knownDuration)
+                .withQuality(Math.max(0, getIntent().getIntExtra("max_width", 0)),
+                        Math.max(0, getIntent().getIntExtra("max_height", 0)));
+        historyRecordedThisSession = WatchHistoryStore.contains(this, historyItem);
         playbackSpeed = normalizedPlaybackSpeed(StateStore.playbackSpeed(this));
         if (videoIdentityUrl == null || videoIdentityUrl.isEmpty()) {
             videoIdentityUrl = getIntent().getStringExtra("resolver_url");
@@ -161,7 +175,6 @@ public final class PlayerActivity extends Activity {
             stopService(new Intent(this, AudioPlaybackService.class));
             resumePosition = StateStore.position(this);
         }
-        knownDuration = Math.max(0L, getIntent().getLongExtra("duration_ms", 0L));
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN
                 | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
@@ -852,6 +865,13 @@ public final class PlayerActivity extends Activity {
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
         int keyCode = event.getKeyCode();
+        if (DeviceType.isTelevision(this) && !playbackMenuVisible
+                && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                openHistory();
+            }
+            return true;
+        }
         if (keyCode == KeyEvent.KEYCODE_MENU) {
             if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
                 setPlaybackMenuVisible(!playbackMenuVisible);
@@ -910,7 +930,7 @@ public final class PlayerActivity extends Activity {
         }
         leavingPlayer = true;
         saveProgress();
-        StateStore.markSearch(this);
+        StateStore.markReturnScreen(this);
         super.onBackPressed();
     }
 
@@ -938,12 +958,24 @@ public final class PlayerActivity extends Activity {
                 getIntent().getStringExtra("page_url"),
                 Math.max(0L, position),
                 Math.max(0L, actualDuration));
+        if (!historyRecordedThisSession && position >= WatchProgressStore.MIN_POSITION_MS) {
+            WatchHistoryStore.record(this, historyItem.withDuration(actualDuration),
+                    trafficMode, targetHeight, audioOnly);
+            historyRecordedThisSession = true;
+        }
     }
 
     private void openOfficial() {
         String page = getIntent().getStringExtra("page_url");
         if (page == null) return;
         try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(page))); } catch (Exception ignored) { }
+    }
+
+    private void openHistory() {
+        leavingPlayer = true;
+        saveProgress();
+        StateStore.markHistory(this);
+        finish();
     }
 
     @Override protected void onStart() {

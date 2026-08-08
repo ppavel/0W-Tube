@@ -12,11 +12,14 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.view.GestureDetector;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.EditText;
@@ -52,9 +55,14 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_INSTALL_SOURCE = 4307;
     private final SearchClient searchClient = new SearchClient();
     private final ExecutorService network = Executors.newFixedThreadPool(4);
+    private final ExecutorService historyIo = Executors.newSingleThreadExecutor();
     private final AtomicInteger generation = new AtomicInteger();
+    private final AtomicInteger historyGeneration = new AtomicInteger();
     private final List<VideoItem> allItems = new ArrayList<>();
+    private final List<VideoItem> searchItems = new ArrayList<>();
+    private final List<VideoItem> historyItems = new ArrayList<>();
     private final List<VideoItem> items = new ArrayList<>();
+    private final Map<String, WatchHistoryStore.Entry> historyByKey = new HashMap<>();
     private final Set<String> qualityRequested = new HashSet<>();
     private static final String[] NORMAL_FILTER_LABELS = {"Любое", "720+", "1080+", "1440+", "2160 / 4K"};
     private static final int[] NORMAL_FILTER_WIDTHS = {0, 1280, 1920, 2560, 3840};
@@ -66,6 +74,10 @@ public final class MainActivity extends Activity {
     private GridView grid;
     private EditText query;
     private TextView status;
+    private TextView historyStatus;
+    private View searchBar;
+    private View filterBar;
+    private View historyBar;
     private final List<Button> filterButtons = new ArrayList<>();
     private ImageButton trafficButton;
     private int selectedFilter;
@@ -89,6 +101,10 @@ public final class MainActivity extends Activity {
     private String okError;
     private String currentSearchQuery = "";
     private int qualityJobs;
+    private boolean historyMode;
+    private int modeSwitchHeldKey = KeyEvent.KEYCODE_UNKNOWN;
+    private final GridState searchGridState = new GridState();
+    private final GridState historyGridState = new GridState();
     private UpdateManager.Release pendingUpdate;
     private File pendingUpdateApk;
     private boolean activityResumed;
@@ -168,11 +184,29 @@ public final class MainActivity extends Activity {
             bar.addView(search, searchParams);
         }
 
-        root.addView(bar, new LinearLayout.LayoutParams(-1, dp(compact ? 48 : 64)));
+        searchBar = bar;
+        root.addView(searchBar, new LinearLayout.LayoutParams(-1, dp(compact ? 48 : 64)));
 
-        LinearLayout filterBar = new LinearLayout(this);
-        filterBar.setOrientation(LinearLayout.HORIZONTAL);
-        filterBar.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout historyHeader = new LinearLayout(this);
+        historyHeader.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView historyLogo = new ImageView(this);
+        historyLogo.setImageResource(R.drawable.ic_launcher);
+        historyLogo.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        historyHeader.addView(historyLogo,
+                new LinearLayout.LayoutParams(dp(compact ? 48 : 70), dp(compact ? 44 : 60)));
+        TextView historyTitle = text("История просмотров", compact ? 18 : 22, Color.WHITE);
+        historyTitle.setGravity(Gravity.CENTER_VERTICAL);
+        historyHeader.addView(historyTitle, new LinearLayout.LayoutParams(0, -1, 1f));
+        historyStatus = text("", compact ? 11 : 13, Color.rgb(169, 176, 190));
+        historyStatus.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        historyHeader.addView(historyStatus,
+                new LinearLayout.LayoutParams(dp(compact ? 78 : 120), -1));
+        historyBar = historyHeader;
+        root.addView(historyBar, new LinearLayout.LayoutParams(-1, dp(compact ? 48 : 64)));
+
+        LinearLayout filtersAndStatus = new LinearLayout(this);
+        filtersAndStatus.setOrientation(LinearLayout.HORIZONTAL);
+        filtersAndStatus.setGravity(Gravity.CENTER_VERTICAL);
 
         LinearLayout filters = new LinearLayout(this);
         filters.setOrientation(LinearLayout.HORIZONTAL);
@@ -214,17 +248,19 @@ public final class MainActivity extends Activity {
         status.setGravity(Gravity.CENTER);
         status.setVisibility(View.INVISIBLE);
         if (compact) {
-            filterBar.setOrientation(LinearLayout.VERTICAL);
-            filterBar.setGravity(Gravity.NO_GRAVITY);
-            filterBar.addView(filterScroll, new LinearLayout.LayoutParams(-1, dp(36)));
+            filtersAndStatus.setOrientation(LinearLayout.VERTICAL);
+            filtersAndStatus.setGravity(Gravity.NO_GRAVITY);
+            filtersAndStatus.addView(filterScroll, new LinearLayout.LayoutParams(-1, dp(36)));
             status.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
-            filterBar.addView(status, new LinearLayout.LayoutParams(-1, dp(26)));
+            filtersAndStatus.addView(status, new LinearLayout.LayoutParams(-1, dp(26)));
+            filterBar = filtersAndStatus;
             root.addView(filterBar, new LinearLayout.LayoutParams(-1, dp(62)));
         } else {
-            filterBar.addView(filterScroll, new LinearLayout.LayoutParams(0, dp(36), 1f));
+            filtersAndStatus.addView(filterScroll, new LinearLayout.LayoutParams(0, dp(36), 1f));
             LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(dp(90), dp(36));
             statusParams.setMargins(dp(8), 0, 0, 0);
-            filterBar.addView(status, statusParams);
+            filtersAndStatus.addView(status, statusParams);
+            filterBar = filtersAndStatus;
             root.addView(filterBar, new LinearLayout.LayoutParams(-1, dp(36)));
         }
 
@@ -244,7 +280,31 @@ public final class MainActivity extends Activity {
         adapter = new VideoAdapter(this);
         grid.setAdapter(adapter);
         grid.setOnItemClickListener((parent, view, position, id) -> play(items.get(position)));
+        GestureDetector swipe = new GestureDetector(this,
+                new GestureDetector.SimpleOnGestureListener() {
+                    @Override public boolean onDown(MotionEvent event) { return true; }
+
+                    @Override public boolean onFling(MotionEvent start, MotionEvent end,
+                                                     float velocityX, float velocityY) {
+                        if (DeviceType.isTelevision(MainActivity.this)
+                                || start == null || end == null) return false;
+                        float dx = end.getX() - start.getX();
+                        float dy = end.getY() - start.getY();
+                        if (Math.abs(dx) < dp(72) || Math.abs(dx) < Math.abs(dy) * 1.4f) {
+                            return false;
+                        }
+                        if (dx < 0 && !historyMode) showHistory(false);
+                        else if (dx > 0 && historyMode) showSearch(false);
+                        else return false;
+                        return true;
+                    }
+                });
+        grid.setOnTouchListener((view, event) -> {
+            swipe.onTouchEvent(event);
+            return false;
+        });
         root.addView(grid, new LinearLayout.LayoutParams(-1, 0, 1f));
+        updateModeChrome();
         updateThumbnailTarget();
         ViewCompat.requestApplyInsets(root);
         return root;
@@ -263,6 +323,102 @@ public final class MainActivity extends Activity {
         thumbnailTargetWidth = Math.max(1, columnWidth - dp(14));
     }
 
+    private void showHistory(boolean focusGrid) {
+        if (historyMode) return;
+        captureGridState(searchGridState);
+        historyMode = true;
+        StateStore.markHistory(this);
+        items.clear();
+        items.addAll(historyItems);
+        adapter.notifyDataSetChanged();
+        updateModeChrome();
+        hideKeyboard();
+        reloadHistory(false, focusGrid);
+    }
+
+    private void showSearch(boolean focusGrid) {
+        if (!historyMode) return;
+        captureGridState(historyGridState);
+        historyMode = false;
+        StateStore.markSearch(this);
+        items.clear();
+        items.addAll(searchItems);
+        updateModeChrome();
+        adapter.notifyDataSetChanged();
+        if (focusGrid && items.isEmpty()) query.requestFocus();
+        else restoreGridState(searchGridState, focusGrid);
+        updateSearchStatus();
+        if (searchItems.isEmpty() && query.getText().toString().trim().length() >= 2) {
+            grid.post(this::search);
+        }
+    }
+
+    private void reloadHistory(boolean preserveGridState, boolean focusGrid) {
+        if (preserveGridState && grid != null && historyMode) captureGridState(historyGridState);
+        int current = historyGeneration.incrementAndGet();
+        if (historyStatus != null && historyItems.isEmpty()) historyStatus.setText("…");
+        historyIo.execute(() -> {
+            List<WatchHistoryStore.Entry> history = WatchHistoryStore.load(this);
+            runOnUiThread(() -> {
+                if (current != historyGeneration.get() || !historyMode || isFinishing()) return;
+                historyByKey.clear();
+                historyItems.clear();
+                for (WatchHistoryStore.Entry entry : history) {
+                    historyItems.add(entry.item);
+                    historyByKey.put(entry.item.stableKey(), entry);
+                }
+                items.clear();
+                items.addAll(historyItems);
+                if (historyStatus != null) {
+                    historyStatus.setText(items.isEmpty() ? "Пусто" : String.valueOf(items.size()));
+                }
+                if (adapter != null) adapter.notifyDataSetChanged();
+                restoreGridState(historyGridState,
+                        focusGrid || (preserveGridState && historyGridState.hadFocus));
+            });
+        });
+    }
+
+    private void updateModeChrome() {
+        if (searchBar == null || filterBar == null || historyBar == null) return;
+        searchBar.setVisibility(historyMode ? View.GONE : View.VISIBLE);
+        filterBar.setVisibility(historyMode ? View.GONE : View.VISIBLE);
+        historyBar.setVisibility(historyMode ? View.VISIBLE : View.GONE);
+        if (historyStatus != null && historyMode) {
+            historyStatus.setText(items.isEmpty() ? "Пусто" : String.valueOf(items.size()));
+        }
+    }
+
+    private void captureGridState(GridState state) {
+        if (grid == null) return;
+        state.selectedKey = selectedItemKey();
+        state.firstVisible = grid.getFirstVisiblePosition();
+        View first = grid.getChildAt(0);
+        state.firstTop = first == null ? 0 : first.getTop();
+        state.hadFocus = grid.hasFocus();
+    }
+
+    private void restoreGridState(GridState state, boolean requestFocus) {
+        if (grid == null) return;
+        int position = Math.max(0, Math.min(state.firstVisible,
+                Math.max(0, items.size() - 1)));
+        grid.setSelectionFromTop(position, state.firstTop);
+        grid.post(() -> {
+            grid.setSelectionFromTop(position, state.firstTop);
+            restoreGridSelection(state.selectedKey,
+                    requestFocus || state.hadFocus, requestFocus && state.selectedKey == null);
+            if (requestFocus && items.isEmpty()) grid.requestFocus();
+        });
+    }
+
+    private void hideKeyboard() {
+        InputMethodManager keyboard = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (keyboard != null && query != null) {
+            keyboard.hideSoftInputFromWindow(query.getWindowToken(), 0);
+            query.clearFocus();
+        }
+    }
+
     private void search() {
         String value = query.getText().toString().trim();
         if (value.length() < 2) return;
@@ -272,11 +428,13 @@ public final class MainActivity extends Activity {
         for (Future<?> search : activeSearches) search.cancel(true);
         activeSearches.clear();
         allItems.clear();
-        items.clear();
+        searchItems.clear();
+        if (!historyMode) items.clear();
         qualityRequested.clear();
         qualityJobs = 0;
-        adapter.notifyDataSetChanged();
+        if (!historyMode) adapter.notifyDataSetChanged();
         StateStore.saveSearch(this, value, selectedFilter, trafficMode);
+        if (historyMode) StateStore.markHistory(this);
         rutubeDone = false;
         vkDone = false;
         dzenDone = false;
@@ -435,19 +593,25 @@ public final class MainActivity extends Activity {
         }
         status.setVisibility(View.VISIBLE);
         boolean working = !rutubeDone || !vkDone || !dzenDone || !okDone || qualityJobs > 0;
-        status.setText("Найдено: " + items.size() + (working ? "…" : ""));
+        status.setText("Найдено: " + searchItems.size() + (working ? "…" : ""));
     }
 
     private void refreshDisplayedItems(boolean selectFirst) {
-        boolean hadItems = !items.isEmpty();
-        boolean gridHadFocus = grid.hasFocus();
-        String selectedKey = selectedItemKey();
+        boolean hadItems = !searchItems.isEmpty();
+        boolean gridHadFocus = !historyMode && grid.hasFocus();
+        String selectedKey = historyMode ? searchGridState.selectedKey : selectedItemKey();
         int minWidth = trafficMode ? TRAFFIC_FILTER_WIDTHS[selectedFilter] : NORMAL_FILTER_WIDTHS[selectedFilter];
-        items.clear();
+        searchItems.clear();
         for (VideoItem item : allItems) {
-            if (minWidth == 0 || item.maxWidth >= minWidth) items.add(item);
+            if (minWidth == 0 || item.maxWidth >= minWidth) searchItems.add(item);
         }
-        Collections.sort(items, VideoRanker.comparator(currentSearchQuery, trafficMode));
+        Collections.sort(searchItems, VideoRanker.comparator(currentSearchQuery, trafficMode));
+        if (historyMode) {
+            updateSearchStatus();
+            return;
+        }
+        items.clear();
+        items.addAll(searchItems);
         adapter.notifyDataSetChanged();
         restoreGridSelection(selectedKey, gridHadFocus, selectFirst && !hadItems && !items.isEmpty());
         updateSearchStatus();
@@ -527,11 +691,25 @@ public final class MainActivity extends Activity {
     }
 
     private void play(VideoItem item) {
-        long position = WatchProgressStore.get(this, item).positionMs;
-        int targetHeight = trafficMode ? TRAFFIC_FILTER_HEIGHTS[selectedFilter] : 0;
-        boolean audioOnly = trafficMode && targetHeight == 0;
-        StateStore.savePlayer(this, item, position, trafficMode, targetHeight, audioOnly);
-        launchPlayer(item, position, true, trafficMode, targetHeight, audioOnly);
+        WatchProgressStore.Progress watched = WatchProgressStore.get(this, item);
+        long position = watched.positionMs;
+        long duration = watched.durationMs > 0 ? watched.durationMs : item.durationMs;
+        if (duration > 0 && position * 100L >= duration * 95L) position = 0L;
+        WatchHistoryStore.Entry history = historyMode ? historyByKey.get(item.stableKey()) : null;
+        boolean playerTrafficMode = history == null ? trafficMode : history.trafficMode;
+        int targetHeight = history == null
+                ? (trafficMode ? TRAFFIC_FILTER_HEIGHTS[selectedFilter] : 0)
+                : history.targetHeight;
+        boolean audioOnly = history == null
+                ? trafficMode && targetHeight == 0
+                : history.audioOnly;
+        if (watched.positionMs >= WatchProgressStore.MIN_POSITION_MS) {
+            WatchHistoryStore.record(this, item.withDuration(duration),
+                    playerTrafficMode, targetHeight, audioOnly);
+        }
+        StateStore.savePlayer(this, item, position, playerTrafficMode, targetHeight,
+                audioOnly, historyMode);
+        launchPlayer(item, position, true, playerTrafficMode, targetHeight, audioOnly);
     }
 
     private void launchPlayer(VideoItem item, long position, boolean autoPlay,
@@ -540,9 +718,13 @@ public final class MainActivity extends Activity {
             Intent intent = new Intent(this, PlayerActivity.class);
             intent.putExtra("source", item.source);
             intent.putExtra("title", item.title);
+            intent.putExtra("subtitle", item.subtitle);
+            intent.putExtra("thumbnail", item.thumbnail);
             intent.putExtra("resolver_url", item.playUrl);
             intent.putExtra("page_url", item.pageUrl);
             intent.putExtra("duration_ms", item.durationMs);
+            intent.putExtra("max_width", item.maxWidth);
+            intent.putExtra("max_height", item.maxHeight);
             intent.putExtra("resume_position", position);
             intent.putExtra("auto_play", autoPlay);
             intent.putExtra("traffic_mode", playerTrafficMode);
@@ -564,7 +746,11 @@ public final class MainActivity extends Activity {
         selectFilter(selectedFilter, false);
         String lastQuery = StateStore.query(this);
         query.setText(lastQuery);
-        if ("player".equals(StateStore.screen(this))) {
+        WatchHistoryStore.migrateLegacyPlayer(this, StateStore.playerItem(this),
+                StateStore.playerTrafficMode(this), StateStore.playerTargetHeight(this),
+                StateStore.playerAudioOnly(this));
+        String screen = StateStore.screen(this);
+        if ("player".equals(screen)) {
             VideoItem item = StateStore.playerItem(this);
             if (item != null) {
                 launchPlayer(item, StateStore.position(this), false,
@@ -573,7 +759,55 @@ public final class MainActivity extends Activity {
                 return;
             }
         }
+        if ("history".equals(screen)) {
+            showHistory(false);
+            return;
+        }
         if (lastQuery.trim().length() >= 2) grid.post(this::search); else query.requestFocus();
+    }
+
+    @Override public boolean dispatchKeyEvent(KeyEvent event) {
+        if (DeviceType.isTelevision(this)) {
+            int keyCode = event.getKeyCode();
+            if (modeSwitchHeldKey == keyCode) {
+                if (event.getAction() == KeyEvent.ACTION_UP) {
+                    modeSwitchHeldKey = KeyEvent.KEYCODE_UNKNOWN;
+                }
+                return true;
+            }
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                boolean simpleOpen = !historyMode
+                        && keyCode == KeyEvent.KEYCODE_DPAD_DOWN
+                        && event.getRepeatCount() == 0
+                        && (grid == null || !grid.hasFocus());
+                boolean longOpen = !historyMode
+                        && keyCode == KeyEvent.KEYCODE_DPAD_DOWN
+                        && event.getRepeatCount() > 0
+                        && grid != null && grid.hasFocus();
+                int selected = grid == null ? -1 : grid.getSelectedItemPosition();
+                boolean ceilingClose = historyMode
+                        && keyCode == KeyEvent.KEYCODE_DPAD_UP
+                        && event.getRepeatCount() == 0
+                        && (items.isEmpty() || selected < gridColumns);
+                boolean longClose = historyMode
+                        && keyCode == KeyEvent.KEYCODE_DPAD_UP
+                        && event.getRepeatCount() > 0;
+                if (simpleOpen || longOpen || ceilingClose || longClose) {
+                    modeSwitchHeldKey = keyCode;
+                    if (historyMode) showSearch(true); else showHistory(true);
+                    return true;
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    @Override public void onBackPressed() {
+        if (historyMode) {
+            showSearch(true);
+            return;
+        }
+        super.onBackPressed();
     }
 
     @Override public void onConfigurationChanged(Configuration configuration) {
@@ -591,6 +825,7 @@ public final class MainActivity extends Activity {
         query.setText(queryText);
         query.setSelection(Math.max(0, Math.min(querySelection, queryText.length())));
         applyFilterMode();
+        updateModeChrome();
         adapter.notifyDataSetChanged();
         updateSearchStatus();
 
@@ -609,13 +844,19 @@ public final class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         generation.incrementAndGet();
+        historyGeneration.incrementAndGet();
         network.shutdownNow();
+        historyIo.shutdownNow();
         super.onDestroy();
     }
 
     @Override protected void onResume() {
         super.onResume();
         activityResumed = true;
+        String savedScreen = StateStore.screen(this);
+        if ("history".equals(savedScreen) && !historyMode) showHistory(true);
+        else if ("search".equals(savedScreen) && historyMode) showSearch(true);
+        if (historyMode) reloadHistory(true, historyGridState.hadFocus);
         if (adapter != null) adapter.notifyDataSetChanged();
         if (grid != null) grid.post(() -> {
             checkForUpdate();
@@ -831,6 +1072,15 @@ public final class MainActivity extends Activity {
     }
 
     private String cardQualityLabel(VideoItem item) {
+        if (historyMode) {
+            WatchHistoryStore.Entry history = historyByKey.get(item.stableKey());
+            if (history != null && history.audioOnly) return "звук";
+            if (history != null && history.trafficMode && history.targetHeight > 0) {
+                return String.valueOf(history.targetHeight);
+            }
+            String quality = item.qualityLabel();
+            return quality.endsWith("p") ? quality.substring(0, quality.length() - 1) : quality;
+        }
         if (trafficMode) {
             int targetHeight = TRAFFIC_FILTER_HEIGHTS[selectedFilter];
             if (targetHeight == 0) return "звук";
@@ -849,6 +1099,13 @@ public final class MainActivity extends Activity {
             this.image = image; this.progress = progress; this.duration = duration;
             this.source = source; this.title = title;
         }
+    }
+
+    private static final class GridState {
+        String selectedKey;
+        int firstVisible;
+        int firstTop;
+        boolean hadFocus;
     }
 
     private static String formatDuration(long durationMs) {

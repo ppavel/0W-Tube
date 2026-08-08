@@ -20,13 +20,20 @@ final class StateStore {
     }
 
     static void savePlayer(Context context, VideoItem item, long position) {
-        savePlayer(context, item, position, false, 0, false);
+        savePlayer(context, item, position, false, 0, false, false);
     }
 
     static void savePlayer(Context context, VideoItem item, long position,
                            boolean trafficMode, int targetHeight, boolean audioOnly) {
+        savePlayer(context, item, position, trafficMode, targetHeight, audioOnly, false);
+    }
+
+    static void savePlayer(Context context, VideoItem item, long position,
+                           boolean trafficMode, int targetHeight, boolean audioOnly,
+                           boolean returnToHistory) {
         prefs(context).edit()
                 .putString("screen", "player")
+                .putString("return_screen", returnToHistory ? "history" : "search")
                 .putString("source", item.source)
                 .putString("title", item.title)
                 .putString("subtitle", item.subtitle)
@@ -34,6 +41,8 @@ final class StateStore {
                 .putString("resolver_url", item.playUrl)
                 .putString("page_url", item.pageUrl)
                 .putLong("duration", item.durationMs)
+                .putInt("max_width", item.maxWidth)
+                .putInt("max_height", item.maxHeight)
                 .putLong("position", Math.max(0, position))
                 .putBoolean("player_traffic_mode", trafficMode)
                 .putInt("player_target_height", targetHeight)
@@ -51,6 +60,16 @@ final class StateStore {
 
     static void markSearch(Context context) {
         prefs(context).edit().putString("screen", "search").apply();
+    }
+
+    static void markHistory(Context context) {
+        prefs(context).edit().putString("screen", "history").apply();
+    }
+
+    static void markReturnScreen(Context context) {
+        SharedPreferences preferences = prefs(context);
+        preferences.edit().putString("screen",
+                preferences.getString("return_screen", "search")).apply();
     }
 
     static String screen(Context context) { return prefs(context).getString("screen", "search"); }
@@ -74,7 +93,8 @@ final class StateStore {
                 p.getString("thumbnail", ""),
                 resolver,
                 p.getString("page_url", ""),
-                p.getLong("duration", 0L));
+                p.getLong("duration", 0L))
+                .withQuality(p.getInt("max_width", 0), p.getInt("max_height", 0));
     }
 
     private static SharedPreferences prefs(Context context) {
