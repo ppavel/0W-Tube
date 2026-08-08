@@ -270,7 +270,7 @@ final class StreamResolver {
         PlaybackInfo cached = CACHE.get(cacheKey);
         if (cached != null && System.currentTimeMillis() - cached.loadedAt < CACHE_MS) return cached;
         String optionsUrl = "https://rutube.ru/api/play/options/" + id
-                + "/?format=json&no_404=true";
+                + "/?format=json&no_404=true&mq=all";
         if (privateKey != null && !privateKey.isEmpty()) {
             optionsUrl += "&p=" + URLEncoder.encode(privateKey, "UTF-8");
         }
