@@ -91,14 +91,17 @@ public final class MainActivity extends Activity {
     private boolean vkDone;
     private boolean dzenDone;
     private boolean okDone;
+    private boolean peerTubeDone;
     private int rutubeCount;
     private int vkCount;
     private int dzenCount;
     private int okCount;
+    private int peerTubeCount;
     private String rutubeError;
     private String vkError;
     private String dzenError;
     private String okError;
+    private String peerTubeError;
     private String currentSearchQuery = "";
     private int qualityJobs;
     private boolean historyMode;
@@ -156,7 +159,7 @@ public final class MainActivity extends Activity {
         query.setTextColor(Color.WHITE);
         query.setHintTextColor(Color.rgb(160, 166, 178));
         query.setHint(compact ? "Найти видео"
-                : "Введите запрос для поиска в RUTUBE, VK Video, Дзене и OK");
+                : "Введите запрос для поиска в RUTUBE, VK Video, Дзене, OK и PeerTube");
         query.setTextSize(compact ? 16 : 20);
         query.setBackgroundResource(R.drawable.search_field_background);
         if (compact) {
@@ -439,14 +442,17 @@ public final class MainActivity extends Activity {
         vkDone = false;
         dzenDone = false;
         okDone = false;
+        peerTubeDone = false;
         rutubeCount = 0;
         vkCount = 0;
         dzenCount = 0;
         okCount = 0;
+        peerTubeCount = 0;
         rutubeError = null;
         vkError = null;
         dzenError = null;
         okError = null;
+        peerTubeError = null;
         updateSearchStatus();
         activeSearches.add(network.submit(
                 () -> runSource(current, "RUTUBE", () -> searchClient.searchRutube(value, 0))));
@@ -456,6 +462,10 @@ public final class MainActivity extends Activity {
                 () -> runDzenSource(current, value)));
         activeSearches.add(network.submit(
                 () -> runSource(current, "OK", () -> searchClient.searchOk(value, 0))));
+        // Submitted last on a four-thread executor: PeerTube starts only after one of the
+        // primary services has returned and can never delay their first cards.
+        activeSearches.add(network.submit(() -> runSource(current, PeerTubeClient.SOURCE,
+                () -> searchClient.searchPeerTube(value, 0, thumbnailTargetWidth))));
     }
 
     private void selectFilter(int index, boolean rerunSearch) {
@@ -581,6 +591,10 @@ public final class MainActivity extends Activity {
             okDone = true;
             okCount = count;
             okError = error;
+        } else if (PeerTubeClient.SOURCE.equals(source)) {
+            peerTubeDone = true;
+            peerTubeCount = count;
+            peerTubeError = error;
         }
         updateSearchStatus();
     }
@@ -592,7 +606,8 @@ public final class MainActivity extends Activity {
             return;
         }
         status.setVisibility(View.VISIBLE);
-        boolean working = !rutubeDone || !vkDone || !dzenDone || !okDone || qualityJobs > 0;
+        boolean working = !rutubeDone || !vkDone || !dzenDone || !okDone
+                || !peerTubeDone || qualityJobs > 0;
         status.setText("Найдено: " + searchItems.size() + (working ? "…" : ""));
     }
 

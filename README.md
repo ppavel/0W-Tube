@@ -1,6 +1,6 @@
 # 0W-Tube
 
-**0W-Tube** ("Zero-Wait Tube") is a lightweight Android TV video search and playback client for RUTUBE, public VK Video, Dzen, and OK content. It is designed for low-memory TV devices and projectors where the official applications are too heavy or slow.
+**0W-Tube** ("Zero-Wait Tube") is a lightweight Android TV video search and playback client for RUTUBE, public VK Video, Dzen, OK, and public PeerTube content. It is designed for low-memory TV devices and projectors where the official applications are too heavy or slow.
 
 The application uses a native Android interface, the system on-screen keyboard, direct network requests, and hardware-only video decoding. It does not embed a WebView, require a VK user token, or run a background service.
 
@@ -8,7 +8,7 @@ The application uses a native Android interface, the system on-screen keyboard, 
 
 ## Features
 
-- Unified, concurrent search across RUTUBE, public VK Video, Dzen, and OK results.
+- Unified, concurrent search across RUTUBE, public VK Video, Dzen, OK, and PeerTube results.
 - Local title-relevance ranking with known maximum quality as a tie-breaker.
 - Maximum-quality badges are filled in on video cards without blocking the UI.
 - Anonymous VK Video web session created automatically; no account or user token is required.
@@ -68,6 +68,8 @@ VK Video search uses the same anonymous web API flow as the public `vkvideo.ru` 
 Dzen search reads the public server-rendered video search page without an account or WebView. The application keeps only anonymous session cookies, resolves fresh public HLS metadata when needed, and uses the same quality filters as the other sources.
 
 OK search reads the public anonymous video-search component. Playback follows the same public metadata flow as yt-dlp's Odnoklassniki extractor: inline player metadata first, then the metadata endpoint and mobile-page fallback. Native OK HLS, DASH, and direct streams are supported without an account; external providers are ignored unless the application already supports them.
+
+PeerTube search uses the global Sepia Search index as a low-priority backend. Results are conservatively filtered for a complete film title and long-form duration, then verified against the originating PeerTube server before a card is shown. Playback prefers a reachable HLS master playlist; traffic-saving audio mode prefers an explicit audio-only file or HLS audio rendition and uses a low-resolution muxed stream only as a fallback.
 
 Private, deleted, region-restricted, DRM-protected, age-gated, or account-only videos may not be available. These public web interfaces can change independently of the application and may require future compatibility updates.
 
@@ -137,8 +139,9 @@ app/src/main/java/ru/tubetv/app/
   VkWebClient.java           Anonymous VK Video search client
   DzenClient.java            Anonymous Dzen search client
   OkClient.java              Anonymous OK search and player metadata client
+  PeerTubeClient.java        Federated PeerTube search, filtering, and stream inspection
   VideoRanker.java           Fast local title-relevance ranking
-  StreamResolver.java        Fresh RUTUBE, VK Video, Dzen, and OK stream resolution
+  StreamResolver.java        Fresh stream resolution for every supported backend
   PlayerActivity.java        Media3 player and TV remote controls
   WatchProgressStore.java    Per-video local playback progress
   ImageLoader.java           Bounded thumbnail loader and memory cache

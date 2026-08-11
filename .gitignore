@@ -36,3 +36,7 @@ Thumbs.db
 *.log
 *.tmp
 *~
+
+# Python research prototypes
+__pycache__/
+*.py[cod]

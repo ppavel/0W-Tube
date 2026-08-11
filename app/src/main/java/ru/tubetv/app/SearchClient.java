@@ -63,6 +63,10 @@ final class SearchClient {
         return OkClient.search(query, minWidth);
     }
 
+    List<VideoItem> searchPeerTube(String query, int minWidth, int thumbnailWidth) throws Exception {
+        return PeerTubeClient.search(query, minWidth, thumbnailWidth);
+    }
+
     int searchDzenPages(String query, DzenClient.PageListener listener) throws Exception {
         return new DzenClient().searchPages(query, listener);
     }

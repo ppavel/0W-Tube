@@ -30,6 +30,9 @@ final class StreamResolver {
     }
 
     PlaybackInfo resolveForPlayback(String resolverUrl, boolean audioOnly) throws Exception {
+        if (PeerTubeClient.isApiUrl(resolverUrl)) {
+            return PeerTubeClient.resolve(resolverUrl, audioOnly);
+        }
         if (resolverUrl != null && (resolverUrl.contains("dzen.ru/video/")
                 || resolverUrl.contains("zen.yandex.ru/video/"))) {
             return inspectDzen(resolverUrl, true, audioOnly);
@@ -45,6 +48,9 @@ final class StreamResolver {
     }
 
     PlaybackInfo inspect(String url) throws Exception {
+        if (PeerTubeClient.isApiUrl(url)) {
+            return PeerTubeClient.resolve(url, false);
+        }
         if (url != null && (url.contains("dzen.ru/video/") || url.contains("zen.yandex.ru/video/"))) {
             return inspectDzen(url, false, false);
         }

@@ -107,12 +107,14 @@ public final class AudioPlaybackService extends Service {
         boolean vk = "VK VIDEO".equals(source);
         boolean dzen = "ДЗЕН".equals(source);
         boolean ok = "OK".equals(source);
+        boolean peerTube = PeerTubeClient.SOURCE.equals(source);
         if (dzen) {
             CookieHandler.setDefault(new CookieManager(null, CookiePolicy.ACCEPT_ALL));
         } else {
             if (ok) CookieHandler.setDefault(new CookieManager(null, CookiePolicy.ACCEPT_NONE));
             headers.put("Referer", vk ? "https://vkvideo.ru/"
-                    : ok ? OkClient.REFERER : "https://rutube.ru/");
+                    : ok ? OkClient.REFERER
+                    : peerTube ? pageUrl : "https://rutube.ru/");
         }
         DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
                 .setUserAgent(dzen ? DzenClient.USER_AGENT : vk
