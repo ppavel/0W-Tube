@@ -113,6 +113,7 @@ public final class MainActivity extends Activity {
     private boolean activityResumed;
     private boolean updateDialogVisible;
     private String offeredUpdateVersion;
+    private Object systemBackCallback;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -120,6 +121,7 @@ public final class MainActivity extends Activity {
         imageLoader = ((TubeApplication) getApplication()).imageLoader();
         setContentView(createContent());
         restoreState();
+        registerSystemBackCallback();
         checkForUpdate();
     }
 
@@ -402,15 +404,16 @@ public final class MainActivity extends Activity {
     }
 
     private void restoreGridState(GridState state, boolean requestFocus) {
-        if (grid == null) return;
+        if (grid == null || items.isEmpty()) return;
         int position = Math.max(0, Math.min(state.firstVisible,
-                Math.max(0, items.size() - 1)));
+                items.size() - 1));
         grid.setSelectionFromTop(position, state.firstTop);
         grid.post(() -> {
-            grid.setSelectionFromTop(position, state.firstTop);
+            if (items.isEmpty()) return;
+            int restoredPosition = Math.max(0, Math.min(position, items.size() - 1));
+            grid.setSelectionFromTop(restoredPosition, state.firstTop);
             restoreGridSelection(state.selectedKey,
                     requestFocus || state.hadFocus, requestFocus && state.selectedKey == null);
-            if (requestFocus && items.isEmpty()) grid.requestFocus();
         });
     }
 
@@ -818,11 +821,31 @@ public final class MainActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
-        if (historyMode) {
-            showSearch(true);
-            return;
-        }
+        if (handleBackNavigation()) return;
         super.onBackPressed();
+    }
+
+    private boolean handleBackNavigation() {
+        if (!historyMode) return false;
+        showSearch(true);
+        return true;
+    }
+
+    private void registerSystemBackCallback() {
+        if (Build.VERSION.SDK_INT < 33 || systemBackCallback != null) return;
+        android.window.OnBackInvokedCallback callback = () -> {
+            if (!handleBackNavigation()) finish();
+        };
+        systemBackCallback = callback;
+        getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback);
+    }
+
+    private void unregisterSystemBackCallback() {
+        if (Build.VERSION.SDK_INT < 33 || systemBackCallback == null) return;
+        getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(
+                (android.window.OnBackInvokedCallback) systemBackCallback);
+        systemBackCallback = null;
     }
 
     @Override public void onConfigurationChanged(Configuration configuration) {
@@ -844,20 +867,27 @@ public final class MainActivity extends Activity {
         adapter.notifyDataSetChanged();
         updateSearchStatus();
 
-        final int visiblePosition = Math.max(0, Math.min(firstVisible,
-                Math.max(0, items.size() - 1)));
-        grid.setSelectionFromTop(visiblePosition, firstTop);
-        grid.post(() -> {
+        if (items.isEmpty()) {
+            if (queryHadFocus && !historyMode) query.requestFocus();
+        } else {
+            final int visiblePosition = Math.max(0, Math.min(firstVisible, items.size() - 1));
             grid.setSelectionFromTop(visiblePosition, firstTop);
-            if (gridHadFocus) {
-                restoreGridSelection(selectedKey, true, false);
-            } else if (queryHadFocus) {
-                query.requestFocus();
-            }
-        });
+            grid.post(() -> {
+                if (items.isEmpty()) return;
+                int restoredPosition = Math.max(0,
+                        Math.min(visiblePosition, items.size() - 1));
+                grid.setSelectionFromTop(restoredPosition, firstTop);
+                if (gridHadFocus) {
+                    restoreGridSelection(selectedKey, true, false);
+                } else if (queryHadFocus) {
+                    query.requestFocus();
+                }
+            });
+        }
     }
 
     @Override protected void onDestroy() {
+        unregisterSystemBackCallback();
         generation.incrementAndGet();
         historyGeneration.incrementAndGet();
         network.shutdownNow();
