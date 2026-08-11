@@ -17,8 +17,8 @@ final class VideoRanker {
     static Comparator<VideoItem> comparator(String query, boolean lowestQualityFirst) {
         Map<String, Integer> scores = new HashMap<>();
         return (left, right) -> {
-            int leftScore = scores.computeIfAbsent(left.title, title -> score(title, query));
-            int rightScore = scores.computeIfAbsent(right.title, title -> score(title, query));
+            int leftScore = cachedScore(scores, left.title, query);
+            int rightScore = cachedScore(scores, right.title, query);
             int relevance = Integer.compare(rightScore, leftScore);
             if (relevance != 0) return relevance;
             int quality = lowestQualityFirst
@@ -31,6 +31,14 @@ final class VideoRanker {
             if (quality != 0) return quality;
             return 0; // List.sort is stable: preserve the source's own ranking.
         };
+    }
+
+    private static int cachedScore(Map<String, Integer> scores, String title, String query) {
+        Integer cached = scores.get(title);
+        if (cached != null) return cached;
+        int calculated = score(title, query);
+        scores.put(title, calculated);
+        return calculated;
     }
 
     private static int compareKnownQuality(int left, int right) {
