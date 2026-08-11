@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 final class VkWebClient {
@@ -73,16 +74,14 @@ final class VkWebClient {
 
     int searchPages(String query, int minWidth, int thumbnailWidth,
                     PageListener listener) throws Exception {
-        String token = getAnonymousToken();
         String address = "https://api.vkvideo.ru/method/catalog.getVideoSearchWeb2"
                 + "?v=" + API_VERSION
                 + "&client_id=" + CLIENT_ID
                 + "&count=30"
                 + "&q=" + Uri.encode(query)
                 + "&content_type=video"
-                + (minWidth > 0 ? "&hd=1" : "")
-                + "&access_token=" + Uri.encode(token);
-        JSONObject root = getJson(address);
+                + (minWidth > 0 ? "&hd=1" : "");
+        JSONObject root = authorizedJson(address, null);
         JSONObject response = response(root);
         Set<String> seen = new LinkedHashSet<>();
         int total = 0;
@@ -97,13 +96,33 @@ final class VkWebClient {
             if (cursor == null || cursor.nextFrom.equals(previousNext) || total >= LIMIT) break;
             previousNext = cursor.nextFrom;
             String body = "section_id=" + Uri.encode(cursor.sectionId)
-                    + "&start_from=" + Uri.encode(cursor.nextFrom)
-                    + "&access_token=" + Uri.encode(token);
-            root = postJson("https://api.vkvideo.ru/method/catalog.getSection"
+                    + "&start_from=" + Uri.encode(cursor.nextFrom);
+            root = authorizedJson("https://api.vkvideo.ru/method/catalog.getSection"
                     + "?v=" + API_VERSION + "&client_id=" + CLIENT_ID, body);
             response = response(root);
         }
         return total;
+    }
+
+    private static JSONObject authorizedJson(String address, String body) throws Exception {
+        JSONObject root = null;
+        for (int attempt = 0; attempt < 2; attempt++) {
+            String token = "access_token=" + Uri.encode(getAnonymousToken());
+            root = body == null
+                    ? getJson(address + "&" + token)
+                    : postJson(address, body + "&" + token);
+            if (!isAuthorizationError(root) || attempt == 1) return root;
+            clearAnonymousToken();
+        }
+        return root;
+    }
+
+    static boolean isAuthorizationError(JSONObject root) {
+        JSONObject error = root == null ? null : root.optJSONObject("error");
+        if (error == null) return false;
+        if (error.optInt("error_code") == 5) return true;
+        return error.optString("error_msg").toLowerCase(Locale.ROOT)
+                .contains("authorization failed");
     }
 
     private static JSONObject response(JSONObject root) throws Exception {
