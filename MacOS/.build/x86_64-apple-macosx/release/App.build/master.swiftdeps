@@ -1,0 +1,13 @@
+version: "Apple Swift version 6.0 (swiftlang-6.0.0.9.10 clang-1600.0.26.2)"
+options: "196b547b7e6aa2dbd0e1e9ffb21da6116acd7163c520974d574bf3eca99578f5"
+build_start_time: [1788352642, 567264000]
+build_end_time: [1788352644, 247225000]
+inputs:
+  "/Users/ppavel/oss/0W-Tube/Sources/App/AppDelegate.swift": [1788350884, 150328382]
+  "/Users/ppavel/oss/0W-Tube/Sources/App/Clients/RutubeClient.swift": [1788352634, 685046503]
+  "/Users/ppavel/oss/0W-Tube/Sources/App/Clients/VideoClient.swift": [1788338420, 0]
+  "/Users/ppavel/oss/0W-Tube/Sources/App/ContentView.swift": [1788351379, 484124362]
+  "/Users/ppavel/oss/0W-Tube/Sources/App/Models/Video.swift": [1788338420, 0]
+  "/Users/ppavel/oss/0W-Tube/Sources/App/VideoPlayerView.swift": [1788338420, 0]
+  "/Users/ppavel/oss/0W-Tube/Sources/App/ViewModels/SearchViewModel.swift": [1788338420, 0]
+  "/Users/ppavel/oss/0W-Tube/Sources/App/main.swift": [1788350863, 921631341]

@@ -1,0 +1,66 @@
+client:
+  name: basic
+  file-system: device-agnostic
+tools: {}
+targets:
+  "0W-Tube-x86_64-apple-macosx15.0-release.exe": ["<0W-Tube-x86_64-apple-macosx15.0-release.exe>"]
+  "App-x86_64-apple-macosx15.0-release.module": ["<App-x86_64-apple-macosx15.0-release.module>"]
+  "PackageStructure": ["<PackageStructure>"]
+  "main": ["<0W-Tube-x86_64-apple-macosx15.0-release.exe>","<App-x86_64-apple-macosx15.0-release.module>"]
+  "test": ["<0W-Tube-x86_64-apple-macosx15.0-release.exe>","<App-x86_64-apple-macosx15.0-release.module>"]
+default: "main"
+nodes:
+  "/Users/ppavel/oss/0W-Tube/Sources/App/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+commands:
+  "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/0W-Tube.product/Objects.LinkFileList":
+    tool: write-auxiliary-file
+    inputs: ["<link-file-list>","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/AppDelegate.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/ContentView.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/RutubeClient.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/SearchViewModel.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/Video.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/VideoClient.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/VideoPlayerView.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/main.swift.o"]
+    outputs: ["/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/0W-Tube.product/Objects.LinkFileList"]
+    description: "Write auxiliary file /Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/0W-Tube.product/Objects.LinkFileList"
+
+  "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/ppavel/oss/0W-Tube/Sources/App/AppDelegate.swift","/Users/ppavel/oss/0W-Tube/Sources/App/Clients/RutubeClient.swift","/Users/ppavel/oss/0W-Tube/Sources/App/Clients/VideoClient.swift","/Users/ppavel/oss/0W-Tube/Sources/App/ContentView.swift","/Users/ppavel/oss/0W-Tube/Sources/App/Models/Video.swift","/Users/ppavel/oss/0W-Tube/Sources/App/VideoPlayerView.swift","/Users/ppavel/oss/0W-Tube/Sources/App/ViewModels/SearchViewModel.swift","/Users/ppavel/oss/0W-Tube/Sources/App/main.swift"]
+    outputs: ["/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/sources"]
+    description: "Write auxiliary file /Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/sources"
+
+  "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/swift-version--1AB21518FC5DEDBE.txt":
+    tool: write-auxiliary-file
+    inputs: ["<swift-get-version>","/Library/Developer/CommandLineTools/usr/bin/swiftc"]
+    outputs: ["/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/swift-version--1AB21518FC5DEDBE.txt"]
+    always-out-of-date: "true"
+    description: "Write auxiliary file /Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/swift-version--1AB21518FC5DEDBE.txt"
+
+  "<0W-Tube-x86_64-apple-macosx15.0-release.exe>":
+    tool: phony
+    inputs: ["/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/0W-Tube"]
+    outputs: ["<0W-Tube-x86_64-apple-macosx15.0-release.exe>"]
+
+  "<App-x86_64-apple-macosx15.0-release.module>":
+    tool: phony
+    inputs: ["/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/AppDelegate.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/RutubeClient.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/VideoClient.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/ContentView.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/Video.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/VideoPlayerView.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/SearchViewModel.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/main.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/Modules/App.swiftmodule"]
+    outputs: ["<App-x86_64-apple-macosx15.0-release.module>"]
+
+  "C.0W-Tube-x86_64-apple-macosx15.0-release.exe":
+    tool: shell
+    inputs: ["/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/AppDelegate.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/ContentView.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/RutubeClient.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/SearchViewModel.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/Video.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/VideoClient.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/VideoPlayerView.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/main.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/0W-Tube.product/Objects.LinkFileList"]
+    outputs: ["/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/0W-Tube"]
+    description: "Linking ./.build/x86_64-apple-macosx/release/0W-Tube"
+    args: ["/Library/Developer/CommandLineTools/usr/bin/swiftc","-L","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release","-o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/0W-Tube","-module-name","_W_Tube","-Xlinker","-no_warn_duplicate_libraries","-emit-executable","-Xlinker","-dead_strip","-Xlinker","-alias","-Xlinker","_App_main","-Xlinker","_main","-Xlinker","-rpath","-Xlinker","@loader_path","@/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/0W-Tube.product/Objects.LinkFileList","-target","x86_64-apple-macosx13.0","-sdk","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-g"]
+
+  "C.App-x86_64-apple-macosx15.0-release.module":
+    tool: shell
+    inputs: ["/Users/ppavel/oss/0W-Tube/Sources/App/AppDelegate.swift","/Users/ppavel/oss/0W-Tube/Sources/App/Clients/RutubeClient.swift","/Users/ppavel/oss/0W-Tube/Sources/App/Clients/VideoClient.swift","/Users/ppavel/oss/0W-Tube/Sources/App/ContentView.swift","/Users/ppavel/oss/0W-Tube/Sources/App/Models/Video.swift","/Users/ppavel/oss/0W-Tube/Sources/App/VideoPlayerView.swift","/Users/ppavel/oss/0W-Tube/Sources/App/ViewModels/SearchViewModel.swift","/Users/ppavel/oss/0W-Tube/Sources/App/main.swift","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/swift-version--1AB21518FC5DEDBE.txt","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/sources"]
+    outputs: ["/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/AppDelegate.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/RutubeClient.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/VideoClient.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/ContentView.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/Video.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/VideoPlayerView.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/SearchViewModel.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/main.swift.o","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/Modules/App.swiftmodule"]
+    description: "Compiling Swift Module 'App' (8 sources)"
+    args: ["/Library/Developer/CommandLineTools/usr/bin/swiftc","-module-name","App","-emit-dependencies","-emit-module","-emit-module-path","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/Modules/App.swiftmodule","-output-file-map","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/output-file-map.json","-whole-module-optimization","-num-threads","16","-c","@/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/sources","-I","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/Modules","-target","x86_64-apple-macosx13.0","-O","-j16","-DSWIFT_PACKAGE","-module-cache-path","/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/ModuleCache","-parseable-output","-Xfrontend","-entry-point-function-name","-Xfrontend","App_main","-color-diagnostics","-swift-version","5","-sdk","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-g","-Xcc","-isysroot","-Xcc","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-Xcc","-fPIC","-Xcc","-g","-package-name","_w_tube"]
+
+  "PackageStructure":
+    tool: package-structure-tool
+    inputs: ["/Users/ppavel/oss/0W-Tube/Sources/App/","/Users/ppavel/oss/0W-Tube/Package.swift","/Users/ppavel/oss/0W-Tube/Package.resolved"]
+    outputs: ["<PackageStructure>"]
+    description: "Planning build"
+    allow-missing-inputs: true
+

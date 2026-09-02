@@ -1,0 +1,330 @@
+{
+  "builtTestProducts" : [
+
+  ],
+  "copyCommands" : {
+
+  },
+  "explicitTargetDependencyImportCheckingMode" : {
+    "none" : {
+
+    }
+  },
+  "generatedSourceTargetSet" : [
+
+  ],
+  "pluginDescriptions" : [
+
+  ],
+  "swiftCommands" : {
+    "C.App-x86_64-apple-macosx15.0-release.module" : {
+      "executable" : "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "fileList" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/sources",
+      "importPath" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/Sources/App/AppDelegate.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/Sources/App/Clients/RutubeClient.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/Sources/App/Clients/VideoClient.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/Sources/App/ContentView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/Sources/App/Models/Video.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/Sources/App/VideoPlayerView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/Sources/App/ViewModels/SearchViewModel.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/Sources/App/main.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/swift-version--1AB21518FC5DEDBE.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/sources"
+        }
+      ],
+      "isLibrary" : false,
+      "moduleName" : "App",
+      "moduleOutputPath" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/Modules/App.swiftmodule",
+      "objects" : [
+        "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/AppDelegate.swift.o",
+        "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/RutubeClient.swift.o",
+        "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/VideoClient.swift.o",
+        "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/ContentView.swift.o",
+        "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/Video.swift.o",
+        "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/VideoPlayerView.swift.o",
+        "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/SearchViewModel.swift.o",
+        "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/main.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "x86_64-apple-macosx13.0",
+        "-O",
+        "-j16",
+        "-DSWIFT_PACKAGE",
+        "-module-cache-path",
+        "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/ModuleCache",
+        "-parseable-output",
+        "-Xfrontend",
+        "-entry-point-function-name",
+        "-Xfrontend",
+        "App_main",
+        "-color-diagnostics",
+        "-swift-version",
+        "5",
+        "-sdk",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "_w_tube"
+      ],
+      "outputFileMapPath" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/AppDelegate.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/RutubeClient.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/VideoClient.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/ContentView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/Video.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/VideoPlayerView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/SearchViewModel.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/main.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/Modules/App.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/ppavel/oss/0W-Tube/Sources/App/AppDelegate.swift",
+        "/Users/ppavel/oss/0W-Tube/Sources/App/Clients/RutubeClient.swift",
+        "/Users/ppavel/oss/0W-Tube/Sources/App/Clients/VideoClient.swift",
+        "/Users/ppavel/oss/0W-Tube/Sources/App/ContentView.swift",
+        "/Users/ppavel/oss/0W-Tube/Sources/App/Models/Video.swift",
+        "/Users/ppavel/oss/0W-Tube/Sources/App/VideoPlayerView.swift",
+        "/Users/ppavel/oss/0W-Tube/Sources/App/ViewModels/SearchViewModel.swift",
+        "/Users/ppavel/oss/0W-Tube/Sources/App/main.swift"
+      ],
+      "tempsPath" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build",
+      "wholeModuleOptimization" : true
+    }
+  },
+  "swiftFrontendCommands" : {
+
+  },
+  "swiftTargetScanArgs" : {
+    "App" : [
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "-module-name",
+      "App",
+      "-package-name",
+      "_w_tube",
+      "-whole-module-optimization",
+      "-num-threads",
+      "16",
+      "-c",
+      "/Users/ppavel/oss/0W-Tube/Sources/App/AppDelegate.swift",
+      "/Users/ppavel/oss/0W-Tube/Sources/App/Clients/RutubeClient.swift",
+      "/Users/ppavel/oss/0W-Tube/Sources/App/Clients/VideoClient.swift",
+      "/Users/ppavel/oss/0W-Tube/Sources/App/ContentView.swift",
+      "/Users/ppavel/oss/0W-Tube/Sources/App/Models/Video.swift",
+      "/Users/ppavel/oss/0W-Tube/Sources/App/VideoPlayerView.swift",
+      "/Users/ppavel/oss/0W-Tube/Sources/App/ViewModels/SearchViewModel.swift",
+      "/Users/ppavel/oss/0W-Tube/Sources/App/main.swift",
+      "-I",
+      "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/Modules",
+      "-target",
+      "x86_64-apple-macosx13.0",
+      "-O",
+      "-j16",
+      "-DSWIFT_PACKAGE",
+      "-module-cache-path",
+      "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/ModuleCache",
+      "-parseable-output",
+      "-Xfrontend",
+      "-entry-point-function-name",
+      "-Xfrontend",
+      "App_main",
+      "-color-diagnostics",
+      "-swift-version",
+      "5",
+      "-sdk",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "_w_tube",
+      "-driver-use-frontend-path",
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc"
+    ]
+  },
+  "targetDependencyMap" : {
+    "App" : [
+
+    ]
+  },
+  "testDiscoveryCommands" : {
+
+  },
+  "testEntryPointCommands" : {
+
+  },
+  "writeCommands" : {
+    "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/0W-Tube.product/Objects.LinkFileList" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/AppDelegate.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/ContentView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/RutubeClient.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/SearchViewModel.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/Video.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/VideoClient.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/VideoPlayerView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/main.swift.o"
+        }
+      ],
+      "outputFilePath" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/0W-Tube.product/Objects.LinkFileList"
+    },
+    "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/Sources/App/AppDelegate.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/Sources/App/Clients/RutubeClient.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/Sources/App/Clients/VideoClient.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/Sources/App/ContentView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/Sources/App/Models/Video.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/Sources/App/VideoPlayerView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/Sources/App/ViewModels/SearchViewModel.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/ppavel/oss/0W-Tube/Sources/App/main.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/App.build/sources"
+    },
+    "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/swift-version--1AB21518FC5DEDBE.txt" : {
+      "alwaysOutOfDate" : true,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<swift-get-version>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Library/Developer/CommandLineTools/usr/bin/swiftc"
+        }
+      ],
+      "outputFilePath" : "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/release/swift-version--1AB21518FC5DEDBE.txt"
+    }
+  }
+}

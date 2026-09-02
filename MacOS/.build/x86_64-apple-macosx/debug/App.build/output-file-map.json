@@ -1,0 +1,53 @@
+{
+  "": {
+    "swift-dependencies": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/master.swiftdeps"
+  },
+  "/Users/ppavel/oss/0W-Tube/Sources/App/AppDelegate.swift": {
+    "dependencies": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/AppDelegate.d",
+    "object": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/AppDelegate.swift.o",
+    "swiftmodule": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/AppDelegate~partial.swiftmodule",
+    "swift-dependencies": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/AppDelegate.swiftdeps"
+  },
+  "/Users/ppavel/oss/0W-Tube/Sources/App/Clients/RutubeClient.swift": {
+    "dependencies": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/RutubeClient.d",
+    "object": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/RutubeClient.swift.o",
+    "swiftmodule": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/RutubeClient~partial.swiftmodule",
+    "swift-dependencies": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/RutubeClient.swiftdeps"
+  },
+  "/Users/ppavel/oss/0W-Tube/Sources/App/Clients/VideoClient.swift": {
+    "dependencies": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/VideoClient.d",
+    "object": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/VideoClient.swift.o",
+    "swiftmodule": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/VideoClient~partial.swiftmodule",
+    "swift-dependencies": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/VideoClient.swiftdeps"
+  },
+  "/Users/ppavel/oss/0W-Tube/Sources/App/ContentView.swift": {
+    "dependencies": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/ContentView.d",
+    "object": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/ContentView.swift.o",
+    "swiftmodule": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/ContentView~partial.swiftmodule",
+    "swift-dependencies": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/ContentView.swiftdeps"
+  },
+  "/Users/ppavel/oss/0W-Tube/Sources/App/Models/Video.swift": {
+    "dependencies": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/Video.d",
+    "object": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/Video.swift.o",
+    "swiftmodule": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/Video~partial.swiftmodule",
+    "swift-dependencies": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/Video.swiftdeps"
+  },
+  "/Users/ppavel/oss/0W-Tube/Sources/App/VideoPlayerView.swift": {
+    "dependencies": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/VideoPlayerView.d",
+    "object": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/VideoPlayerView.swift.o",
+    "swiftmodule": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/VideoPlayerView~partial.swiftmodule",
+    "swift-dependencies": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/VideoPlayerView.swiftdeps"
+  },
+  "/Users/ppavel/oss/0W-Tube/Sources/App/ViewModels/SearchViewModel.swift": {
+    "dependencies": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/SearchViewModel.d",
+    "object": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/SearchViewModel.swift.o",
+    "swiftmodule": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/SearchViewModel~partial.swiftmodule",
+    "swift-dependencies": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/SearchViewModel.swiftdeps"
+  },
+  "/Users/ppavel/oss/0W-Tube/Sources/App/main.swift": {
+    "dependencies": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/main.d",
+    "object": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/main.swift.o",
+    "swiftmodule": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/main~partial.swiftmodule",
+    "swift-dependencies": "/Users/ppavel/oss/0W-Tube/.build/x86_64-apple-macosx/debug/App.build/main.swiftdeps"
+  }
+}
