@@ -2,6 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <!-- Интерфейс русский, как и в Android-версии (resourceConfigurations ['ru']).
+         Отсюда AppKit берет язык для пунктов, которые дописывает сам:
+         «Завершить и сохранить окна», «Перейти в полноэкранный режим», «Отменить». -->
+    <key>CFBundleDevelopmentRegion</key>
+    <string>ru</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>ru</string>
+    </array>
     <key>CFBundleExecutable</key>
     <string>0W-Tube</string>
     <key>CFBundleIdentifier</key>
@@ -15,7 +24,7 @@
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
-    <string>13.0</string>
+    <string>12.0</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
     <key>NSHighResolutionCapable</key>

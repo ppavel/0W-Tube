@@ -1,0 +1,16 @@
+# SwiftPM build artifacts
+.build/
+.swiftpm/
+Package.resolved
+
+# Собранный .app bundle (Scripts/build-app.sh)
+Build/
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+*.dSYM/
+
+# Загруженные установщики тулчейна
+*.pkg

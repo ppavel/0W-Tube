@@ -1,93 +1,48 @@
 import Foundation
 
-struct RutubeClient: VideoClient {
-    func search(query: String) async throws -> [Video] {
-        let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let urlString = "https://rutube.ru/api/search/video/?query=\(encodedQuery)"
-        
-        guard let url = URL(string: urlString) else { return [] }
-        
-        var request = URLRequest(url: url)
-        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:120.0) Gecko/20100101 Firefox/120.0", forHTTPHeaderField: "User-Agent")
-        
-        let (data, _) = try await URLSession.shared.data(for: request)
-        
-        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let results = json["results"] as? [[String: Any]] {
-            return results.compactMap { dict in
-                guard let id = dict["id"] as? String,
-                      let title = dict["title"] as? String else { return nil }
-                
-                let thumbString = dict["thumbnail_url"] as? String
-                let thumbUrl = thumbString.flatMap { URL(string: $0) }
-                
-                return Video(id: id, title: title, thumbnailUrl: thumbUrl, source: "RUTUBE")
-            }
+/// Поиск по публичному эндпоинту RUTUBE. Разбор потока живёт в `StreamResolver`:
+/// карточка несёт только адрес плеера, который резолвится перед запуском.
+enum RutubeClient {
+    private static let limit = 12
+    private static let userAgent = "0W-Tube/0.7.3 macOS"
+
+    static func search(query: String, minWidth: Int) async throws -> [VideoItem] {
+        let address = "https://rutube.ru/api/search/video/?query=\(Url.encode(query))&page=1"
+        var options = Http.Options()
+        options.accept = "application/json"
+        options.userAgent = userAgent
+        options.timeout = 7
+        options.errorPrefix = "RUTUBE"
+        let root = try await Http.json(address, options)
+
+        guard let items = root.array("results") else { return [] }
+        var result: [VideoItem] = []
+        for item in items.prefix(limit) {
+            let id = item.string("id")
+            let page = nonEmpty(item.string("video_url")) ?? "https://rutube.ru/video/\(id)/"
+            var embed = nonEmpty(item.string("embed_url")) ?? "https://rutube.ru/play/embed/\(id)"
+            embed = copyQueryParameter(from: page, to: embed, name: "p")
+            result.append(VideoItem(source: VideoSource.rutube,
+                                    title: nonEmpty(item.string("title")) ?? "Без названия",
+                                    thumbnail: item.string("thumbnail_url"),
+                                    playUrl: embed,
+                                    pageUrl: page,
+                                    durationMs: item.int("duration") * 1000))
         }
-        return []
+        if minWidth <= 0 || result.isEmpty { return result }
+        return try await SearchClient.filterByQuality(result, minWidth: minWidth)
     }
-    
-    func resolveStream(videoId: String) async throws -> URL? {
-        // Правильный endpoint из оригинального Java-кода
-        let urlString = "https://rutube.ru/api/play/options/\(videoId)/?format=json&no_404=true&mq=all"
-        guard let url = URL(string: urlString) else { return nil }
-        
-        var request = URLRequest(url: url)
-        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:120.0) Gecko/20100101 Firefox/120.0", forHTTPHeaderField: "User-Agent")
-        request.setValue("https://rutube.ru/video/\(videoId)/", forHTTPHeaderField: "Referer")
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        // Отладочный вывод
-        if let jsonString = String(data: data, encoding: .utf8) {
-            print("\n=== RUTUBE STREAM RESPONSE ===")
-            print("Status: \((response as? HTTPURLResponse)?.statusCode ?? 0)")
-            print(jsonString.prefix(500))
-            print("================================\n")
-        }
-        
-        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            // Проверяем наличие ошибки
-            if let detail = json["detail"] as? [String: Any],
-               let reason = detail["type"] as? String {
-                print("RUTUBE error: \(reason)")
-                return nil
-            }
-            
-            // Извлекаем video_balancer
-            if let balancer = json["video_balancer"] as? [String: Any] {
-                // Ищем HLS (m3u8) ссылку
-                for (_, value) in balancer {
-                    if let urlString = value as? String,
-                       urlString.contains(".m3u8") || urlString.contains("ct=8"),
-                       let m3u8Url = URL(string: urlString) {
-                        print("Found HLS stream: \(urlString)")
-                        return m3u8Url
-                    }
-                }
-                
-                // Если HLS не найден, ищем DASH (mpd)
-                for (_, value) in balancer {
-                    if let urlString = value as? String,
-                       urlString.contains(".mpd") || urlString.contains("ct=6"),
-                       let dashUrl = URL(string: urlString) {
-                        print("Found DASH stream: \(urlString)")
-                        return dashUrl
-                    }
-                }
-                
-                // Fallback: любая HTTP ссылка
-                for (_, value) in balancer {
-                    if let urlString = value as? String,
-                       urlString.hasPrefix("http"),
-                       let fallbackUrl = URL(string: urlString) {
-                        print("Found fallback stream: \(urlString)")
-                        return fallbackUrl
-                    }
-                }
-            }
-        }
-        
-        return nil
+
+    /// Приватные ролики отдают ключ `p` только на странице; для плеера его нужно перенести.
+    private static func copyQueryParameter(from source: String, to target: String, name: String) -> String {
+        guard let value = Url.queryParameter(source, name), !value.isEmpty,
+              Url.queryParameter(target, name) == nil,
+              var components = URLComponents(string: target) else { return target }
+        var items = components.queryItems ?? []
+        items.append(URLQueryItem(name: name, value: value))
+        components.queryItems = items
+        return components.string ?? target
     }
+
+    private static func nonEmpty(_ value: String) -> String? { value.isEmpty ? nil : value }
 }

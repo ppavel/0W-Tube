@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "0W-Tube",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v12)],
     products: [
         .executable(name: "0W-Tube", targets: ["App"])
     ],
