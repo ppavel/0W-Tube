@@ -2,45 +2,59 @@
 set -e
 
 APP_NAME="0W-Tube"
-BUILD_DIR=".build/release"
+ARCHS=(arm64 x86_64)          # universal: Apple Silicon + Intel
+OUT_DIR=".build/universal"    # сюда кладем склеенный lipo бинарник
 BUNDLE_DIR="Build/$APP_NAME.app"
-MACOS_MIN="12.0"   # должно совпадать с platforms в Package.swift
+MACOS_MIN="12.0"   # должно совпадать с platforms в Package.swift и LSMinimumSystemVersion
 MODULE_CACHE="$HOME/Library/Caches/0W-Tube/ModuleCache"
 
-echo "🛠 Собираем релизный бинарник..."
+mkdir -p "$OUT_DIR"
+SLICES=()
 
-if swift build -c release 2>/dev/null; then
-    echo "   (собрано через SwiftPM)"
-else
-    echo "⚠️  SwiftPM недоступен (нет Xcode) — собираем через swiftc..."
+# SwiftPM умеет собирать только под одну архитектуру за раз: флаг --arch требует
+# xcbuild из полного Xcode, которого при голых Command Line Tools нет. Поэтому
+# гоняем сборку по разу на архитектуру через --triple и склеиваем сами.
+for ARCH in "${ARCHS[@]}"; do
+    TRIPLE="$ARCH-apple-macosx$MACOS_MIN"
+    SLICE="$OUT_DIR/$APP_NAME-$ARCH"
 
-    SDK="$(xcrun --sdk macosx --show-sdk-path)"
-    TARGET="$(uname -m)-apple-macosx$MACOS_MIN"
+    echo "🛠 Собираем релизный бинарник для $ARCH..."
 
-    NUM_CORES=$(sysctl -n hw.ncpu)
+    if swift build -c release --triple "$TRIPLE" 2>/dev/null; then
+        echo "   (собрано через SwiftPM)"
+        cp ".build/$ARCH-apple-macosx/release/$APP_NAME" "$SLICE"
+    else
+        echo "⚠️  SwiftPM недоступен (нет Xcode) — собираем через swiftc..."
 
-    mkdir -p "$BUILD_DIR"
+        SDK="$(xcrun --sdk macosx --show-sdk-path)"
+        NUM_CORES=$(sysctl -n hw.ncpu)
 
-    swiftc \
-        -sdk "$SDK" \
-        -target "$TARGET" \
-        -O \
-        -wmo \
-        -num-threads "$NUM_CORES" \
-        -module-cache-path "$MODULE_CACHE" \
-        $(find Sources/App -name '*.swift') \
-        -Xfrontend -warn-long-function-bodies=50 \
-        -Xfrontend -warn-long-expression-type-checking=50 \
-        -o "$BUILD_DIR/$APP_NAME"
+        swiftc \
+            -sdk "$SDK" \
+            -target "$TRIPLE" \
+            -O \
+            -wmo \
+            -num-threads "$NUM_CORES" \
+            -module-cache-path "$MODULE_CACHE" \
+            $(find Sources/App -name '*.swift') \
+            -Xfrontend -warn-long-function-bodies=50 \
+            -Xfrontend -warn-long-expression-type-checking=50 \
+            -o "$SLICE"
+    fi
 
-fi
+    SLICES+=("$SLICE")
+done
+
+echo "🔗 Склеиваем universal binary (${ARCHS[*]})..."
+lipo -create -output "$OUT_DIR/$APP_NAME" "${SLICES[@]}"
+lipo -info "$OUT_DIR/$APP_NAME"
 
 echo "📦 Создаем .app bundle..."
 rm -rf "$BUNDLE_DIR"
 mkdir -p "$BUNDLE_DIR/Contents/MacOS"
 mkdir -p "$BUNDLE_DIR/Contents/Resources"
 
-cp "$BUILD_DIR/$APP_NAME" "$BUNDLE_DIR/Contents/MacOS/"
+cp "$OUT_DIR/$APP_NAME" "$BUNDLE_DIR/Contents/MacOS/"
 cp "Resources/Info.plist" "$BUNDLE_DIR/Contents/"
 
 echo "🔏 Подписываем приложение (ad-hoc)..."
