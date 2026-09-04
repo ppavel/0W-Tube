@@ -15,55 +15,9 @@ struct PlayerSheetView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(request.item.title)
-                        .font(.headline)
-                        .lineLimit(1)
-                    HStack(spacing: 8) {
-                        Text(request.item.source)
-                        if !request.item.qualityLabel.isEmpty { Text(request.item.qualityLabel) }
-                        if request.audioOnly { Text("только звук") }
-                        else if request.targetHeight > 0 { Text("до \(request.targetHeight)p") }
-                    }
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                }
-                Spacer()
-                Button("Закрыть") { close() }
-                    .keyboardShortcut(.cancelAction)
-            }
-            .padding(12)
-
+            header
             Divider()
-
-            Group {
-                if isLoading {
-                    ProgressView("Получаем поток…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let streamUrl {
-                    VideoPlayerView(url: streamUrl,
-                                    resumeMs: request.resumeMs,
-                                    targetHeight: request.audioOnly ? 0 : request.targetHeight) { position, duration in
-                        lastPositionMs = position
-                        if duration > 0 { lastDurationMs = duration }
-                    }
-                } else {
-                    VStack(spacing: 8) {
-                        Text("Не удалось получить поток").font(.headline)
-                        if let failure {
-                            Text(failure)
-                                .font(.callout)
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                        }
-                        Link("Открыть на сайте", destination: URL(string: request.item.pageUrl)
-                            ?? URL(string: "https://rutube.ru/")!)
-                    }
-                    .padding()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            }
+            player
         }
         .frame(minWidth: 860, minHeight: 560)
         .task {
@@ -78,6 +32,69 @@ struct PlayerSheetView: View {
             isLoading = false
         }
         .onDisappear { persist() }
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(request.item.title)
+                    .font(.headline)
+                    .lineLimit(1)
+                subtitle
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+            Button("Закрыть") { close() }
+                .keyboardShortcut(.cancelAction)
+        }
+        .padding(12)
+    }
+
+    private var subtitle: some View {
+        HStack(spacing: 8) {
+            Text(request.item.source)
+            if !request.item.qualityLabel.isEmpty { Text(request.item.qualityLabel) }
+            if request.audioOnly {
+                Text("только звук")
+            } else if request.targetHeight > 0 {
+                Text("до \(request.targetHeight)p")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var player: some View {
+        if isLoading {
+            ProgressView("Получаем поток…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let streamUrl {
+            let height: Int = request.audioOnly ? 0 : request.targetHeight
+            VideoPlayerView(url: streamUrl,
+                            resumeMs: request.resumeMs,
+                            targetHeight: height) { position, duration in
+                lastPositionMs = position
+                if duration > 0 { lastDurationMs = duration }
+            }
+        } else {
+            failureView
+        }
+    }
+
+    private var failureView: some View {
+        let fallback: URL = URL(string: request.item.pageUrl) ?? URL(string: "https://rutube.ru/")!
+        return VStack(spacing: 8) {
+            Text("Не удалось получить поток").font(.headline)
+            if let failure {
+                Text(failure)
+                    .font(.callout)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            Link("Открыть на сайте", destination: fallback)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func close() {

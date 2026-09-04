@@ -145,6 +145,12 @@ enum WatchProgressStore {
             : Progress(positionMs: 0, durationMs: duration)
     }
 
+    static func clear(key: String) {
+        let key = prefix + key
+        Defaults.store.removeObject(forKey: key + "_position")
+        Defaults.store.removeObject(forKey: key + "_duration")
+    }
+
     static func key(source: String, pageUrl: String) -> String {
         let value = source + "|" + pageUrl
         let digest = SHA256.hash(data: Data(value.utf8))
@@ -221,6 +227,15 @@ enum WatchHistoryStore {
         guard !item.pageUrl.isEmpty else { return false }
         let key = WatchProgressStore.key(source: item.source, pageUrl: item.pageUrl)
         return Defaults.store.object(forKey: entryPrefix + key) != nil
+    }
+
+    /// Полная очистка истории: записи, порядок и сохранённые позиции просмотра.
+    static func clear() {
+        for key in readOrder() {
+            Defaults.store.removeObject(forKey: entryPrefix + key)
+            WatchProgressStore.clear(key: key)
+        }
+        Defaults.store.removeObject(forKey: orderKey)
     }
 
     private static func readOrder() -> [String] {

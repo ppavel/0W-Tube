@@ -219,6 +219,20 @@ final class SearchViewModel: ObservableObject {
         updateStatus()
     }
 
+    /// Очистка истории вместе с позициями просмотра: в режиме истории список
+    /// становится пустым, в режиме поиска пропадают полоски прогресса.
+    func clearHistory() {
+        WatchHistoryStore.clear()
+        historyItems = []
+        historyByKey = [:]
+        if historyMode {
+            items = []
+            updateStatus()
+        } else {
+            refreshDisplayedItems()
+        }
+    }
+
     private func refreshDisplayedItems() {
         let minWidth = trafficMode
             ? Self.trafficFilterWidths[selectedFilter]

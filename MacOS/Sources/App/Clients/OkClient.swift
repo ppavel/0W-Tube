@@ -303,9 +303,11 @@ enum OkClient {
         case "nbsp": return "\u{00a0}"
         default:
             guard entity.hasPrefix("#") else { return nil }
-            let hex = entity.count > 2 && (entity.dropFirst().first == "x" || entity.dropFirst().first == "X")
-            let digits = entity.dropFirst(hex ? 2 : 1)
-            guard let code = UInt32(digits, radix: hex ? 16 : 10),
+            let marker: Character? = entity.dropFirst().first
+            let hex: Bool = entity.count > 2 && (marker == "x" || marker == "X")
+            let digits: Substring = entity.dropFirst(hex ? 2 : 1)
+            let radix: Int = hex ? 16 : 10
+            guard let code = UInt32(digits, radix: radix),
                   let scalar = Unicode.Scalar(code) else { return nil }
             return String(Character(scalar))
         }

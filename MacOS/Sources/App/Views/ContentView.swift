@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var viewModel = SearchViewModel()
     @FocusState private var searchFieldFocused: Bool
+    @State private var confirmClearHistory = false
 
     private let columns = [GridItem(.adaptive(minimum: 240), spacing: 18)]
 
@@ -13,6 +14,12 @@ struct ContentView: View {
             Divider()
             statusBar
             content
+        }
+        .confirmationDialog("Очистить историю?", isPresented: $confirmClearHistory) {
+            Button("Очистить", role: .destructive) { viewModel.clearHistory() }
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text("Список недосмотренных роликов и сохранённые позиции просмотра будут удалены.")
         }
         .sheet(item: $viewModel.playback) { request in
             PlayerSheetView(request: request, viewModel: viewModel)
@@ -62,29 +69,48 @@ struct ContentView: View {
             }
             .help("Недосмотренные ролики")
             .foregroundColor(viewModel.historyMode ? .accentColor : .secondary)
+
+            if viewModel.historyMode {
+                Button {
+                    confirmClearHistory = true
+                } label: {
+                    Label("Очистить историю", systemImage: "trash")
+                        .labelStyle(.iconOnly)
+                }
+                .help("Удалить все недосмотренные ролики и сохранённые позиции")
+                .foregroundColor(.secondary)
+                .disabled(viewModel.items.isEmpty)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
     }
 
     private var filterBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        let labels: [String] = viewModel.filterLabels
+        let dimmed: Double = viewModel.historyMode ? 0.4 : 1.0
+        return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(Array(viewModel.filterLabels.enumerated()), id: \.offset) { index, label in
-                    Button(label) { viewModel.selectFilter(index) }
-                        .buttonStyle(.borderless)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 5)
-                        .background(index == viewModel.selectedFilter
-                                    ? Color.accentColor.opacity(0.22) : Color.gray.opacity(0.12))
-                        .clipShape(Capsule())
+                ForEach(labels.indices, id: \.self) { index in
+                    filterChip(index: index, label: labels[index])
                 }
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 10)
         }
         .disabled(viewModel.historyMode)
-        .opacity(viewModel.historyMode ? 0.4 : 1)
+        .opacity(dimmed)
+    }
+
+    private func filterChip(index: Int, label: String) -> some View {
+        let selected: Bool = index == viewModel.selectedFilter
+        let fill: Color = selected ? Color.accentColor.opacity(0.22) : Color.gray.opacity(0.12)
+        return Button(label) { viewModel.selectFilter(index) }
+            .buttonStyle(.borderless)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .background(fill)
+            .clipShape(Capsule())
     }
 
     private var statusBar: some View {
@@ -151,38 +177,8 @@ struct VideoCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ZStack(alignment: .bottom) {
-                Rectangle()
-                    .fill(Color.gray.opacity(0.18))
-                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
-                    .overlay {
-                        if let url = item.thumbnailUrl {
-                            AsyncImage(url: url) { image in
-                                image.resizable().aspectRatio(contentMode: .fill)
-                            } placeholder: {
-                                ProgressView().controlSize(.small)
-                            }
-                        }
-                    }
-                    .clipped()
-
-                HStack(alignment: .bottom) {
-                    if !item.qualityLabel.isEmpty { badge(item.qualityLabel) }
-                    Spacer()
-                    if !item.durationLabel.isEmpty { badge(item.durationLabel) }
-                }
-                .padding(6)
-
-                if progress > 0 {
-                    GeometryReader { geometry in
-                        Rectangle()
-                            .fill(Color.accentColor)
-                            .frame(width: geometry.size.width * progress, height: 3)
-                            .frame(maxHeight: .infinity, alignment: .bottom)
-                    }
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            thumbnail
+                .clipShape(RoundedRectangle(cornerRadius: 8))
 
             Text(item.title)
                 .font(.system(size: 13))
@@ -198,6 +194,55 @@ struct VideoCardView: View {
         .padding(8)
         .background(Color.gray.opacity(0.06))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var thumbnail: some View {
+        ZStack(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.gray.opacity(0.18))
+                .aspectRatio(thumbnailAspect, contentMode: .fit)
+                .overlay { preview }
+                .clipped()
+
+            badges
+            progressBar
+        }
+    }
+
+    private let thumbnailAspect: CGFloat = 16.0 / 9.0
+
+    @ViewBuilder
+    private var preview: some View {
+        if let url = item.thumbnailUrl {
+            AsyncImage(url: url) { image in
+                image.resizable().aspectRatio(contentMode: .fill)
+            } placeholder: {
+                ProgressView().controlSize(.small)
+            }
+        }
+    }
+
+    private var badges: some View {
+        HStack(alignment: .bottom) {
+            if !item.qualityLabel.isEmpty { badge(item.qualityLabel) }
+            Spacer()
+            if !item.durationLabel.isEmpty { badge(item.durationLabel) }
+        }
+        .padding(6)
+    }
+
+    @ViewBuilder
+    private var progressBar: some View {
+        let value: Double = progress
+        if value > 0 {
+            GeometryReader { geometry in
+                let width: CGFloat = geometry.size.width * CGFloat(value)
+                Rectangle()
+                    .fill(Color.accentColor)
+                    .frame(width: width, height: 3)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+            }
+        }
     }
 
     private func badge(_ text: String) -> some View {
